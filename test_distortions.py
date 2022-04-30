@@ -89,7 +89,7 @@ class test_distortions(pdastroclass):
         for ix in self.distortionfiles.getindices():
             
             # get the filter and save it in the 'filter' column
-            m = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+)_(f[a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
+            m = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+)_(f[a-zA-Z0-9]+)_([a-zA-Z0-9]+)',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
             if m is None:
                 raise RuntimeError(f'could not parse filename {os.path.basename(self.distortionfiles.t.loc[ix,"filename"])} for aperture, filter and/or pupil!')
             aperture,filt,pupil = m.groups()

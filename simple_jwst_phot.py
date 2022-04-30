@@ -30,7 +30,7 @@ import pysiaf
 from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 
-def radec_to_idl(ra, dec, aperturename_instrument, primaryhdr, scihdr):
+def get_image_siaf_aperture(aperturename_instrument, primaryhdr, scihdr):
 
 
     instrument = primaryhdr['INSTRUME']
@@ -51,13 +51,27 @@ def radec_to_idl(ra, dec, aperturename_instrument, primaryhdr, scihdr):
 
     aper_orig.set_attitude_matrix(attitude)
 
-    aper_instrument = siaf[aperturename_instrument]
-    aper_instrument.set_attitude_matrix(attitude)
+    image_siaf_aperture = siaf[aperturename_instrument]
+    image_siaf_aperture.set_attitude_matrix(attitude)
+      
+    return image_siaf_aperture
 
-    x_idl, y_idl      = aper_instrument.convert(ra, dec, 'sky', 'idl')
+def radec_to_idl(ra, dec, aperturename_instrument, primaryhdr, scihdr):
+
+    image_siaf_aperture = get_image_siaf_aperture(aperturename_instrument, primaryhdr, scihdr)
+
+    x_idl, y_idl      = image_siaf_aperture.convert(ra, dec, 'sky', 'idl')
   
     return x_idl, y_idl
 
+def xy_to_idl(x, y, aperturename_instrument, primaryhdr, scihdr):
+
+    image_siaf_aperture = get_image_siaf_aperture(aperturename_instrument, primaryhdr, scihdr)
+
+    x_idl, y_idl      = image_siaf_aperture.det(x, y, 'det', 'idl')
+  
+    return x_idl, y_idl
+    
 
 class jwst_photclass(pdastroclass):
     def __init__(self):
@@ -116,7 +130,7 @@ class jwst_photclass(pdastroclass):
         self.scihdr = self.im['SCI'].header
 
         if imagetype is None:
-            if re.search('cal\.fits$',imagename):
+            if re.search('cal\.fits$|tweakregstep\.fits',imagename):
                 self.imagetype = 'cal'
             elif re.search('i2d\.fits$',imagename):
                 self.imagetype = 'i2d'
@@ -441,6 +455,13 @@ class jwst_photclass(pdastroclass):
         self.t.loc[ixs,racol] = coord.ra.degree
         self.t.loc[ixs,deccol] = coord.dec.degree
 
+    def radec_to_xy(self,racol='ra',deccol='dec',xcol='x',ycol='y',indices=None):
+        ixs = self.getindices(indices=indices)
+
+        image_model = ImageModel(self.im)
+        world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
+        (self.t.loc[ixs,xcol], self.t.loc[ixs,ycol]) = world_to_detector(self.t.loc[ixs,racol],self.t.loc[ixs,deccol])
+
     def radec_to_idl(self,racol='ra', deccol='dec', xcol_idl='x_idl', ycol_idl='y_idl',
                      aperturename_instrument='NRCALL_FULL',
                      primaryhdr=None, scihdr=None, indices=None):
@@ -459,6 +480,24 @@ class jwst_photclass(pdastroclass):
   
         return x_idl, y_idl
         
+    def xy_to_idl(self,xcol='x', ycol='y', xcol_idl='x_idl', ycol_idl='y_idl',
+                     aperturename_instrument='NRCALL_FULL',
+                     primaryhdr=None, scihdr=None, indices=None):
+
+        if primaryhdr is None: primaryhdr=self.primaryhdr
+        if scihdr is None: scihdr=self.scihdr
+    
+        indices = self.getindices()
+        print(self.t.loc[indices,xcol])
+        x_idl, y_idl      = xy_to_idl(self.t.loc[indices,xcol], 
+                                      self.t.loc[indices,ycol],
+                                      aperturename_instrument, 
+                                      primaryhdr, scihdr)
+        self.t.loc[indices,xcol_idl]=x_idl
+        self.t.loc[indices,ycol_idl]=y_idl
+  
+        return x_idl, y_idl
+    
     def match_gaiacat(self,gaia_catname,
                       max_sep = 1.0,
                       aperturename_instrument='NRCALL_FULL',
@@ -485,17 +524,23 @@ class jwst_photclass(pdastroclass):
         print(f'image objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
 
         #### gaia catalog
-        # get V2/V3 coords into table
+        # get ideal coords into table
         gaiacat.t['x_idl'], gaiacat.t['y_idl'] = radec_to_idl(gaiacat.t['ra'], 
                                                               gaiacat.t['dec'],
                                                               aperturename_instrument, 
                                                               primaryhdr, scihdr)
+
         # cut down to the objects that are within the image
         ixs_cat = gaiacat.ix_inrange('x_idl',xmin-max_sep,xmax+max_sep)
         ixs_cat = gaiacat.ix_inrange('y_idl',ymin-max_sep,ymax+max_sep,indices=ixs_cat)
         print(f'Keeping {len(ixs_cat)} out of {len(gaiacat.getindices())} catalog objects')
         ixs_cat = gaiacat.ix_not_null(['ra','dec'],indices=ixs_cat)
         print(f'Keeping {len(ixs_cat)}  after removing NaNs from ra/dec')
+
+        # Get the detector x,y position
+        image_model = ImageModel(self.im)
+        world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
+        gaiacat.t.loc[ixs_cat,'x'], gaiacat.t.loc[ixs_cat,'y'] = world_to_detector(gaiacat.t.loc[ixs_cat,'ra'],gaiacat.t.loc[ixs_cat,'dec'])
 
         gaiacoord = SkyCoord(gaiacat.t.loc[ixs_cat,'ra'],gaiacat.t.loc[ixs_cat,'dec'], unit='deg')
     
@@ -505,15 +550,16 @@ class jwst_photclass(pdastroclass):
         # for each object in ixs_obj, it contains the index to the gaiacat entry
         ixs_cat4obj = ixs_cat[idx]
 
-        for cat_col in ['ra','dec','x_idl','y_idl']:
+        for cat_col in ['ra','dec','x','y','x_idl','y_idl']:
             obj_col = f'cat_{cat_col}'
             vals = list(gaiacat.t.loc[ixs_cat4obj,cat_col])
             self.t.loc[ixs_obj,obj_col]=vals
+        self.t.loc[ixs_obj,'gaia_mag']=list(gaiacat.t.loc[ixs_cat4obj,'gaia_mag'])
         self.t.loc[ixs_obj,'cat_index']=ixs_cat4obj
         self.t.loc[ixs_obj,'d2d']=d2d.arcsec
     
-        self.t.loc[ixs_obj,'dx_idl']=self.t.loc[ixs_obj,'cat_x_idl'] - self.t.loc[ixs_obj,'x_idl']
-        self.t.loc[ixs_obj,'dy_idl']=self.t.loc[ixs_obj,'cat_y_idl'] - self.t.loc[ixs_obj,'y_idl']
+        #self.t.loc[ixs_obj,'dx_idl']=self.t.loc[ixs_obj,'cat_x_idl'] - self.t.loc[ixs_obj,'x_idl']
+        #self.t.loc[ixs_obj,'dy_idl']=self.t.loc[ixs_obj,'cat_y_idl'] - self.t.loc[ixs_obj,'y_idl']
     
         #ixs_obj_small_d2d = self.ix_inrange('d2d',None,0.2)
         #print(f'{len(ixs_obj_small_d2d)} matches out of {len(ixs_obj)}')
@@ -535,7 +581,10 @@ class jwst_photclass(pdastroclass):
         return(photfilename)
             
         
-    def run_phot(self,imagename, DNunits=False,SNR_min=3.0, gaia_catname=None):
+    def run_phot(self,imagename, gaia_catname=None, DNunits=True, SNR_min=3.0):
+        if self.verbose:
+            print(f'\n### Doing photometry on {imagename}')
+        
         # load the image, and prepare it. The data and mask are saved in 
         # self.data and self.mask
         self.load_image(imagename,DNunits=DNunits,use_dq=True)
@@ -555,13 +604,17 @@ class jwst_photclass(pdastroclass):
         
         # calculate the ideal coordinates
         self.radec_to_idl(indices=ixs_clean)
+        # calculate the ideal coordinates
+        #self.xy_to_idl(indices=ixs_clean,xcol_idl='x_idl_test',ycol_idl='y_idl_test')
         
         if gaia_catname is not None:
             self.match_gaiacat(gaia_catname,indices=ixs_clean)
         
         #self.write(self.get_photfilename()+'.all')
         # save the catalog
-        self.write(self.get_photfilename(),indices=ixs_clean)
+        photfilename = self.get_photfilename()
+        print(f'Saving {photfilename}')
+        self.write(photfilename,indices=ixs_clean)
         
 if __name__ == '__main__':
     phot = jwst_photclass()
@@ -570,5 +623,5 @@ if __name__ == '__main__':
     
     phot.verbose=args.verbose
     
-    phot.run_phot(args.image,SNR_min=10.0,gaia_catname='./LMC_gaia_DR3.nrcposs')
+    phot.run_phot(args.image,'./LMC_gaia_DR3.nrcposs',SNR_min=10.0)
     
