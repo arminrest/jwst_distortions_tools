@@ -156,6 +156,9 @@ class test_distortion_singleim:
         tweakreg.align_to_gaia = True
         tweakreg.save_results = True
         
+        print(f'FIX ME!!! {tweakreg.fitgeometry}')
+        sys.exit(0)
+        
         if outdir is None:
             outdir=self.outdir
         #if outdir is None:
