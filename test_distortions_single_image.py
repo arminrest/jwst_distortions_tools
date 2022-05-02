@@ -100,13 +100,13 @@ class test_distortion_singleim:
             raise RuntimeError(f'rate image {rate_image} does not exist')
 
         if distortion_file.lower() == 'none':
-            print('WARNING!! not applying any distortion file!!')
+            print('WARNING!! not applying any distortion file!!',stage2_img.assign_wcs.override_distortion)
         else:
             if re.search('\.asdf$',distortion_file) is None:
                 raise RuntimeError(f'distortion file {distortion_file} does not have .asdf suffix. asdf format required.')
             if not os.path.isfile(distortion_file):
                 raise RuntimeError(f'distortion file {distortion_file} does not exist')
-            stage2_img.override_distortion = distortion_file
+            stage2_img.assign_wcs.override_distortion = distortion_file
             
         if outdir is None:
             outdir=self.outdir
