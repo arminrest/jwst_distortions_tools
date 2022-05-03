@@ -9,6 +9,10 @@ from astropy.io import ascii
 from distortion2asdf import coeffs2asdf
 from jwst import datamodels
 
+font1 = {'family': 'helvetica', 'color': 'black', 'weight': 'normal', 'size': '12'}
+font2 = {'family': 'helvetica', 'color': 'black', 'weight': 'normal', 'size': '20'}
+
+
 def overplot_distortion_diffs(t1,t2,plotref=True,
                               XSciRef=1024.5,YSciRef=1024.5,
                               XSciSize=2048, YSciSize=2048):
@@ -43,11 +47,13 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
     plt.clf()
     plt.rc('font', family='serif')
     plt.figure(figsize=(12,12))
-    plt.xticks(fontsize=12)
-    plt.yticks(fontsize=12)
-    plt.xlabel("x_idl [arcsec]", fontsize=15)
-    plt.ylabel("y_idl [arcsec]", fontsize=15)
-    
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.xlabel("x_idl [arcsec]", fontdict=font2)
+    plt.ylabel("y_idl [arcsec]", fontdict=font2)
+    #plt.rcParams['axes.titlesize'] = plt.rcParams['axes.labelsize'] = 30
+    #plt.rcParams['xtick.labelsize'] = plt.rcParams['ytick.labelsize'] = 20
+
     coeffref.get_instrument_info()
     print(f'Instrument: {coeffref.instrument} Aperture:{coeffref.aperture}')
     siafref = pysiaf.Siaf(coeffref.instrument)
@@ -68,7 +74,7 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
                                             XSciRef=aperref.XSciRef,YSciRef=aperref.YSciRef,
                                             XSciSize=aperref.XSciSize, YSciSize=aperref.YSciSize)
         vec_maxs.append(f'{vec_max:.4f}')
-    plt.title(f'{coeffref.instrument} {coeffref.aperture} vec_maxs={vec_maxs}arcsec')
+    plt.title(f'{coeffref.instrument} {coeffref.aperture}\n vec_maxs={vec_maxs}arcsec', fontdict=font2)
     plt.tight_layout()
 
     if output_plot_name is not None:

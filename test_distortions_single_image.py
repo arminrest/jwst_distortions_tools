@@ -155,9 +155,9 @@ class test_distortion_singleim:
             tweakreg = TweakRegStep()
         tweakreg.align_to_gaia = True
         tweakreg.save_results = True
-        
-        print(f'FIX ME!!! {tweakreg.fitgeometry}')
-        sys.exit(0)
+
+        # only correct for rotation and shift
+        tweakreg.fitgeometry = 'rshift'
         
         if outdir is None:
             outdir=self.outdir
