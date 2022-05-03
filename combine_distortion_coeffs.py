@@ -78,7 +78,7 @@ class combine_coeffs(pdastrostatsclass):
                 frames[counter]['filename']=filename
                 
                 # get the filter and save it in the 'filter' column
-                m = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_(f[a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',filename)
+                m = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',filename)
                 if m is None:
                     if require_filter or require_pupil:
                         raise RuntimeError(f'could not parse filename {filename} for filter and/or pupil!')

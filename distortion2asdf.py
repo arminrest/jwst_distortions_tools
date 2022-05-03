@@ -38,7 +38,7 @@ from stdatamodels import util
 from mirage.utils.siaf_interface import sci_subarray_corners
 import numpy as np
 import pysiaf
-import argparse,glob,re,sys
+import argparse,glob,re,sys,os
 
 # pdastroclass is wrapper around pandas.
 from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB
@@ -86,10 +86,13 @@ class coeffs2asdf(pdastroclass):
                                             'NRC_WFSC', 'NRC_TACQ', 'NRC_TACONFIRM', 'NRC_FOCUS',
                                             'NRC_DARK', 'NRC_WFSS', 'NRC_TSGRISM', 'NRC_GRISM']
         self.metadata['exptype']['NRC_LW']=AandB(self.metadata['exptype']['NRC_SW'],['NRC_WFSS', 'NRC_TSGRISM', 'NRC_GRISM'],keeporder=True)
+        self.metadata['exptype']['NIS']=['NIS_IMAGE', 'NIS_AMI', 'NIS_WFSS', 'NIS_TACQ', 'NIS_FOCUS', 'NIS_TACONFIRM']
 
         # subarray metadata-----------------------------------------------
         self.metadata['subarr']={}
         self.metadata['subarr']['FULL']=['GENERIC']
+        # NIRISS
+        self.metadata['subarr']['FULLP']=['GENERIC']
         
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
         if parser is None:
@@ -160,6 +163,10 @@ class coeffs2asdf(pdastroclass):
             else:
                 raise RuntimeError(f'BUG! detector {self.detector} not in NRC?1-5!')
             self.module = self.detector[-2]
+        elif self.detector == 'NIS':
+            self.instrument = "NIRISS"
+            self.camera = "NIS"
+            if self.subarr == 'CEN': self.subarr = 'FULLP'
         else:
             raise RuntimeError(f'detector {self.detector} not implemented yet!')
                 
@@ -213,7 +220,7 @@ class coeffs2asdf(pdastroclass):
             if col in self.t.columns:
                 self.t[col]=self.t[col].astype('int')
 
-    def get_refpix(self,siaf_instance, apername):
+    def get_refpix(self,siaf_instance, apername,instrument):
         """Return the reference location within the given aperture
     
         Parameters
@@ -230,7 +237,7 @@ class coeffs2asdf(pdastroclass):
         # in that case by adding the distance from detector (0, 0) to the
         # lower left corner of the aperture
         #siaf = pysiaf.Siaf('nircam')
-        xc, yc = sci_subarray_corners('nircam', apername, siaf=siaf_instance, verbose=False)
+        xc, yc = sci_subarray_corners(instrument, apername, siaf=siaf_instance, verbose=False)
         llx, urx = xc
         lly, ury = yc
         print('Lower left corner x and y:', llx, lly)
@@ -405,18 +412,31 @@ class coeffs2asdf(pdastroclass):
         # if sci_pupil is None, use the default defined in self.metadata['imaging_pupil']
         # for the given self.camera. self.camera gets defined in self.get_instrument_info
         if sci_pupil is None:
-            sci_pupil = self.metadata['imaging_pupil'][self.camera]
+            if self.camera in self.metadata['imaging_pupil']:
+                sci_pupil = self.metadata['imaging_pupil'][self.camera]
+            else:
+                if self.instrument=='NIRISS':
+                    # NIRISS doesn't have imaging_pupil
+                    pass
+                else:
+                    raise RuntimeError(f'camera {self.camera} not in {self.metadata["imaging_pupil"]}')
 
         # if sci_exptype is None, use the default defined in self.metadata['exptype']
         # for the given self.camera. self.camera gets defined in self.get_instrument_info
         if sci_exptype is None:
-            sci_exptype = self.metadata['exptype'][self.camera]
+            if self.camera in self.metadata['exptype']:
+                sci_exptype = self.metadata['exptype'][self.camera]
+            else:
+                raise RuntimeError(f'camera {self.camera} not in {self.metadata["exptype"]}')
 
         # if sci_exptype is None, use the default defined in self.metadata['subarr']
         # for the given self.subarr. self.subarr gets defined in self.get_instrument_info
         if sci_subarr is None:
-            sci_subarr = self.metadata['subarr'][self.subarr]
-        
+            if self.subarr in self.metadata['subarr']:
+                sci_subarr = self.metadata['subarr'][self.subarr]
+            else:
+                raise RuntimeError(f'subarray {self.subarr} not in {self.metadata["subarr"]}')
+       
 #        degree = 5  # distotion in pysiaf is a 5th order polynomial
 #        numdet = detector[-1]
 #        module = detector[-2]
@@ -438,7 +458,8 @@ class coeffs2asdf(pdastroclass):
     
     
         # Find the distance between (0,0) and the reference location
-        xshift, yshift = self.get_refpix(inst_siaf, self.aperture)
+        xshift, yshift = self.get_refpix(inst_siaf, self.aperture,self.instrument)
+        
         
         # convert the coefficients into dictionaries
         xcoeffs = self.get_coeff_dict('Sci2IdlX')
@@ -530,45 +551,46 @@ class coeffs2asdf(pdastroclass):
         d = DistortionModel(model=model, input_units=u.pix,
                             output_units=u.arcsec)
     
+    
         #Populate metadata
     
         # Keyword values in science data to which this file should
         # be applied
-        p_pupil = ''
         
-        for p in sci_pupil:
-            p_pupil = p_pupil + p + '|'
+        if sci_pupil is not None:
+            p_pupil = ''
+            for p in sci_pupil:
+                p_pupil = p_pupil + p + '|'
+            d.meta.instrument.p_pupil = p_pupil
+            
     
-        p_subarr = ''
-        for p in sci_subarr:
-            p_subarr = p_subarr + p + '|'
+        if sci_subarr is not None:
+            p_subarr = ''
+            for p in sci_subarr:
+                p_subarr = p_subarr + p + '|'
+            d.meta.subarray.p_subarray = p_subarr
     
-        p_exptype = ''
-        for p in sci_exptype:
-            p_exptype = p_exptype + p + '|'
-    
-        d.meta.instrument.p_pupil = p_pupil
-        d.meta.subarray.p_subarray = p_subarr
-        d.meta.exposure.p_exptype = p_exptype
-    
-        #d.meta.instrument.p_pupil = "CLEAR|F162M|F164N|F323N|F405N|F470N|"
-        #d.meta.p_subarray = "FULL|SUB64P|SUB160|SUB160P|SUB320|SUB400P|SUB640|SUB32TATS|SUB32TATSGRISM|SUB8FP1A|SUB8FP1B|SUB96DHSPILA|SUB96DHSPILB|SUB64FP1A|SUB64FP1B|"
-        #d.meta.exposure.p_exptype = "NRC_IMAGE|NRC_TSIMAGE|NRC_FLAT|NRC_LED|NRC_WFSC|"
-    
+        if sci_exptype is not None:
+            p_exptype = ''
+            for p in sci_exptype:
+                p_exptype = p_exptype + p + '|'    
+            d.meta.exposure.p_exptype = p_exptype
+        
         # metadata describing the reference file itself
         d.meta.title = f'{self.instrument} Distortion'
         d.meta.instrument.name = self.instrument.upper()
         d.meta.instrument.module = self.module
         d.meta.instrument.channel = self.channel
+        
         # In the reference file headers, we need to switch NRCA5 to
         # NRCALONG, and same for module B.
         detector=self.detector
-        if detector[-1] == '5':
+        if self.instrument.lower() == 'nircam' and detector[-1] == '5':
             detector = detector[0:4] + 'LONG'
         d.meta.instrument.detector = detector
         d.meta.telescope = 'JWST'
         d.meta.subarray.name = self.subarr
-    
+
         if pedigree is None:
             d.meta.pedigree = 'FLIGHT'
         else:
@@ -579,19 +601,20 @@ class coeffs2asdf(pdastroclass):
         d.meta.reftype = 'DISTORTION'
     
         if author is None:
-            author = "B. Hilbert, A.Rest"
+            author = os.path.expanduser('~')
         d.meta.author = author
     
-        d.meta.litref = "https://github.com/spacetelescope/nircam_calib/nircam_calib/reffile_creation/pipeline/distortion/distortion2asdf.py"
+        d.meta.litref = "https://github.com/arminrest/jwst_distortions_tools/distortion2asdf.py"
 
         if descrip is None:
-            d.meta.description = "TEST OF UPDATED CODE"
+            d.meta.description = "This is a distortion correction reference file."
         else:
             d.meta.description = descrip
+        
     
        #d.meta.exp_type = exp_type
         if useafter is None:
-            d.meta.useafter = "2014-10-01T00:00:01"
+            d.meta.useafter = "2022-01-01T00:00:01"
         else:
             d.meta.useafter = useafter
     
@@ -610,7 +633,7 @@ class coeffs2asdf(pdastroclass):
         #Create additional HISTORY entries
         #entry2 = util.create_history_entry(history_2)
         #d.history.append(entry2)
-    
+   
         
         return(d)
     
