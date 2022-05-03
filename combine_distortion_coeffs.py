@@ -13,6 +13,7 @@ from pdastro import pdastroclass,pdastrostatsclass,makepath4file,unique
 import pandas as pd
 from pandas.core.dtypes.common import is_string_dtype
 from distortion2asdf import coeffs2asdf
+from plot_distortion_diffs import plot_distortionfiles_diffs
 
 class combine_coeffs(pdastrostatsclass):
     def __init__(self):
@@ -53,6 +54,9 @@ class combine_coeffs(pdastrostatsclass):
 
         parser.add_argument('--ignore_filters', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of filter.')
         parser.add_argument('--ignore_pupils', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of pupil.')
+
+        parser.add_argument('--showplot', default=False, action='store_true', help='show the difference of the input coefficients with respect to the combined distortion file')
+        parser.add_argument('--saveplot', default=False, action='store_true', help='save the difference of the input coefficients with respect to the combined distortion file as pdf file')
         return(parser)
     
     def load_coeff_files(self,coeff_filepatterns,require_filter=True,require_pupil=True):
@@ -105,7 +109,8 @@ class combine_coeffs(pdastrostatsclass):
 
         
     def calc_average_coefficients(self, aperture, indices=None, filt=None, pupil=None,
-                                  saveflag=False,outbasename='test',overwrite=False):
+                                  saveflag=False,outbasename='test',overwrite=False,
+                                  showplot=False,saveplot=False):
         print(f'\n######################################################\n### Determining coefficients for {aperture}, filter={filt}, pupil={pupil}\n######################################################')
 
 
@@ -114,6 +119,8 @@ class combine_coeffs(pdastrostatsclass):
 
         siaf_indexs = unique(self.t.loc[indices,self.siaf_index_col])
         siaf_indexs.sort()
+        
+        inputfilenames = unique(self.t.loc[indices,'filename'])
         
         if self.verbose: print(f'siaf_indexs: {siaf_indexs}')
         
@@ -182,6 +189,8 @@ class combine_coeffs(pdastrostatsclass):
             print(f'Saving {outbasename}.distcoeff.txt')
             self.results.write(outbasename+'.distcoeff.txt',indices=ixs_result,formatters=formatters)
 
+            
+
             coeffs = coeffs2asdf()
             print(f'Saving {outbasename}.distcoeff.asdf')
             coeffs.coefffile2adfs(outbasename+'.distcoeff.txt',outname=f'{outbasename}.distcoeff.asdf')
@@ -192,7 +201,15 @@ class combine_coeffs(pdastrostatsclass):
             print(f'Saving {outbasename}.statsinfo.txt')
             resultsstats.write(outbasename+'.statsinfo.txt',formatters=formatters)
 
-        
+            if showplot or saveplot:
+                if saveplot:
+                    plotfilename = f'{outbasename}.distcoeff.pdf'
+                else:
+                    plotfilename = None
+                plot_distortionfiles_diffs(f'{outbasename}.distcoeff.txt',inputfilenames,
+                                           showplot=showplot,output_plot_name=plotfilename)        
+
+
     def get_outdir(self,outrootdir,outsubdir):
         outdir = outrootdir
         if outdir is None: outdir = '.'
@@ -229,7 +246,8 @@ class combine_coeffs(pdastrostatsclass):
     def calc_average_coefficients_all(self, indices=None, apertures=None, 
                                       require_filter=True, require_pupil=True,
                                       saveflag=True, overwrite=False,
-                                      outrootdir=None,outsubdir=None,add2basename=None
+                                      outrootdir=None,outsubdir=None,add2basename=None,
+                                      showplot=False,saveplot=False
                                       ):
         # if None, use all indices
         indices=self.getindices(indices=indices)
@@ -266,14 +284,16 @@ class combine_coeffs(pdastrostatsclass):
                             self.calc_average_coefficients(aperture,indices=ixs2use_pupil, 
                                                            filt=filt, pupil=pupil,
                                                            saveflag=saveflag,outbasename=outbasename,
-                                                           overwrite=overwrite)
+                                                           overwrite=overwrite,
+                                                           showplot=showplot,saveplot=saveplot)
                     else:
                         pupil=None
                         outbasename = self.get_outbasename(outdir,aperture,filt=filt,pupil=pupil,add2basename=add2basename)
                         self.calc_average_coefficients(aperture,indices=ixs2use_filt, 
                                                        filt=filt, pupil=pupil,
                                                        saveflag=saveflag,outbasename=outbasename,
-                                                       overwrite=overwrite)
+                                                       overwrite=overwrite,
+                                                       showplot=showplot,saveplot=saveplot)
                         
                     
             else:
@@ -282,7 +302,8 @@ class combine_coeffs(pdastrostatsclass):
                 self.calc_average_coefficients(aperture,indices=ixs2use, 
                                                filt=filt, pupil=pupil,
                                                saveflag=saveflag,outbasename=outbasename,
-                                               overwrite=overwrite)
+                                               overwrite=overwrite,
+                                               showplot=showplot,saveplot=saveplot)
 
         for col in ['siaf_index','exponent_x','exponent_y']:       
             if col in self.results.t.columns:
@@ -309,7 +330,9 @@ if __name__ == '__main__':
                                          overwrite = args.overwrite,
                                          outrootdir = args.outrootdir, 
                                          outsubdir = args.outsubdir,
-                                         add2basename = args.add2basename
+                                         add2basename = args.add2basename,
+                                         showplot=args.showplot,
+                                         saveplot=args.saveplot
                                          )
     
 #    if args.save_coefficients:

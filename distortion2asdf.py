@@ -324,7 +324,7 @@ class coeffs2asdf(pdastroclass):
         return Shift(v2ref) & Shift(v3ref)
 
                 
-    def create_nircam_distortion(self,
+    def create_asdf_reference_for_distortion(self,
                                  aperture=None, aperture_col=None,
                                  degree=None,
                                  exponent_col='exponent_x',
@@ -642,7 +642,7 @@ class coeffs2asdf(pdastroclass):
         # load the file
         self.load_coeff_file(filename)
 
-        distcoeff = self.create_nircam_distortion()
+        distcoeff = self.create_asdf_reference_for_distortion()
 
         if outname is not None:
             distcoeff.save(outname)

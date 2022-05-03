@@ -40,7 +40,6 @@ def overplot_distortion_diffs(t1,t2,plotref=True,
     vec_max = np.max(vec)
     
     plt.quiver(xg_idl1, yg_idl1, dx,dy, color='blue')
-    print(f'max vec: {vec_max}')
     return(vec_max)
 
 def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=False):
@@ -73,6 +72,7 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
         vec_max = overplot_distortion_diffs(coeffref.t,coeff.t,plotref=(i==0),
                                             XSciRef=aperref.XSciRef,YSciRef=aperref.YSciRef,
                                             XSciSize=aperref.XSciSize, YSciSize=aperref.YSciSize)
+        print(f'{coeff.filename} max vec: {vec_max}')
         vec_maxs.append(f'{vec_max:.4f}')
     plt.title(f'{coeffref.instrument} {coeffref.aperture}\n vec_maxs={vec_maxs}arcsec', fontdict=font2)
     plt.tight_layout()
@@ -84,7 +84,20 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
     if showplot:
         plt.show()
 
-
+def plot_distortionfiles_diffs(coefffileref,coefffilelist,output_plot_name=None,showplot=False):
+    coeffref = coeffs2asdf()
+    print(f'Loading reference coefficient file {coefffileref}')
+    coeffref.load_coeff_file(coefffileref)
+    
+    coefflist = []
+    for filename in coefffilelist:
+        coeffs = coeffs2asdf()
+        print(f'Loading {filename}')
+        coeffs.load_coeff_file(filename)
+        coefflist.append(coeffs)
+   
+    plot_distortion_diffs(coeffref,coefflist,output_plot_name=output_plot_name,showplot=showplot)
+    
 def define_options(parser=None,usage=None,conflict_handler='resolve'):
     if parser is None:
         parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
@@ -104,14 +117,16 @@ if __name__ == '__main__':
     
     filenames=[]
     for filepattern in args.coeff_filepatterns:
-        filenames.extend(glob.glob(filepattern))
+        newfiles = glob.glob(filepattern)
+        if len(newfiles)==0:
+            raise RuntimeError(f'No files for file(pattern) {filepattern}')
+        filenames.extend(newfiles)
     
-    coefflist = []
-    for filename in filenames:
-        coeffs = coeffs2asdf()
-        print(f'Loading {filename}')
-        coeffs.load_coeff_file(filename)
-        coefflist.append(coeffs)
+    if len(filenames)<2:
+        raise RuntimeError(f'At least 2 files required, only {filenames}')
+    
+    refile = filenames[0]
+    filenames=filenames[1:]
+    filenames.sort()
 
-    plot_distortion_diffs(coefflist[0],coefflist[1:],showplot=args.showplot,output_plot_name=args.saveplot)
-
+    plot_distortionfiles_diffs(refile,filenames,showplot=args.showplot,output_plot_name=args.saveplot)
