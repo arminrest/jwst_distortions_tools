@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import sys, argparse,glob,re
+import sys, argparse,glob,re,os
 import pysiaf
 import matplotlib.pyplot as plt
 import numpy as np
@@ -73,8 +73,19 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
                                             XSciRef=aperref.XSciRef,YSciRef=aperref.YSciRef,
                                             XSciSize=aperref.XSciSize, YSciSize=aperref.YSciSize)
         print(f'{coeff.filename} max vec: {vec_max}')
-        vec_maxs.append(f'{vec_max:.4f}')
-    plt.title(f'{coeffref.instrument} {coeffref.aperture}\n vec_maxs={vec_maxs}arcsec', fontdict=font2)
+        vec_maxs.append(float(f'{vec_max*1000:.1f}'))
+    max_vec_maxs = np.amax(np.array(vec_maxs))
+    m1 = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(coeffref.filename))
+    m2 = re.search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)\.distcoeff\.txt',os.path.basename(coeffref.filename))
+    if m1 is not None:
+        filt,pupil = m1.groups()
+    elif m2 is not None:
+        filt,pupil = m2.groups()        
+    else:
+        filt,pupil = (None,None)
+    title = f'{coeffref.instrument} {coeffref.aperture} filt/pupil={filt}/{pupil} max(vec_maxs)={max_vec_maxs}mas\n vec_maxs={vec_maxs}mas'
+    plt.title(title, fontdict=font2)
+
     plt.tight_layout()
 
     if output_plot_name is not None:
