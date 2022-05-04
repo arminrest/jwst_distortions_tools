@@ -76,7 +76,7 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
         vec_maxs.append(float(f'{vec_max*1000:.1f}'))
     max_vec_maxs = np.amax(np.array(vec_maxs))
     m1 = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(coeffref.filename))
-    m2 = re.search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)\.distcoeff\.txt',os.path.basename(coeffref.filename))
+    m2 = re.search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.distcoeff\.txt',os.path.basename(coeffref.filename))
     if m1 is not None:
         filt,pupil = m1.groups(os.path.basename(coeffref.filename))
     elif m2 is not None:
