@@ -30,7 +30,7 @@ import pysiaf
 from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 
-def get_image_siaf_aperture(aperturename_instrument, primaryhdr, scihdr):
+def get_image_siaf_aperture(aperturename, primaryhdr, scihdr):
 
 
     instrument = primaryhdr['INSTRUME']
@@ -51,22 +51,22 @@ def get_image_siaf_aperture(aperturename_instrument, primaryhdr, scihdr):
 
     aper_orig.set_attitude_matrix(attitude)
 
-    image_siaf_aperture = siaf[aperturename_instrument]
+    image_siaf_aperture = siaf[aperturename]
     image_siaf_aperture.set_attitude_matrix(attitude)
       
     return image_siaf_aperture
 
-def radec_to_idl(ra, dec, aperturename_instrument, primaryhdr, scihdr):
+def radec_to_idl(ra, dec, aperturename, primaryhdr, scihdr):
 
-    image_siaf_aperture = get_image_siaf_aperture(aperturename_instrument, primaryhdr, scihdr)
+    image_siaf_aperture = get_image_siaf_aperture(aperturename, primaryhdr, scihdr)
 
     x_idl, y_idl      = image_siaf_aperture.convert(ra, dec, 'sky', 'idl')
   
     return x_idl, y_idl
 
-def xy_to_idl(x, y, aperturename_instrument, primaryhdr, scihdr):
+def xy_to_idl(x, y, aperturename, primaryhdr, scihdr):
 
-    image_siaf_aperture = get_image_siaf_aperture(aperturename_instrument, primaryhdr, scihdr)
+    image_siaf_aperture = get_image_siaf_aperture(aperturename, primaryhdr, scihdr)
 
     x_idl, y_idl      = image_siaf_aperture.det(x, y, 'det', 'idl')
   
@@ -77,14 +77,20 @@ class jwst_photclass(pdastroclass):
     def __init__(self):
         pdastroclass.__init__(self)
         
-        self.filters = ['F070W', 'F090W', 'F115W', 'F140M', 'F150W2', 'F150W', 'F162M', 'F164N', 'F182M',
-                        'F187N', 'F200W', 'F210M', 'F212N', 'F250M', 'F277W', 'F300M', 'F322W2', 'F323N',
-                        'F335M', 'F356W', 'F360M', 'F405N', 'F410M', 'F430M', 'F444W', 'F460M', 'F466N', 'F470N', 'F480M']
-        
-        self.psf_fwhm = [0.987, 1.103, 1.298, 1.553, 1.628, 1.770, 1.801, 1.494, 1.990, 2.060, 2.141, 2.304, 2.341, 1.340,
-                    1.444, 1.585, 1.547, 1.711, 1.760, 1.830, 1.901, 2.165, 2.179, 2.300, 2.302, 2.459, 2.507, 2.535, 2.574]
-        
-        self.dict_utils = {self.filters[i]: {'psf fwhm': self.psf_fwhm[i]} for i in range(len(self.filters))}
+        self.filters = {}
+        self.filters['NIRCAM'] = ['F070W', 'F090W', 'F115W', 'F140M', 'F150W2', 'F150W', 'F162M', 'F164N', 'F182M',
+                                  'F187N', 'F200W', 'F210M', 'F212N', 'F250M', 'F277W', 'F300M', 'F322W2', 'F323N',
+                                  'F335M', 'F356W', 'F360M', 'F405N', 'F410M', 'F430M', 'F444W', 'F460M', 'F466N', 'F470N', 'F480M']
+        self.filters['NIRISS'] = ['F090W', 'F115W', 'F140M', 'F150W', 'F158M', 'F200W', 'F277W', 'F356W', 'F380M', 'F430M', 'F444W', 'F480M']
+
+        self.psf_fwhm = {}
+        self.psf_fwhm['NIRCAM'] = [0.987, 1.103, 1.298, 1.553, 1.628, 1.770, 1.801, 1.494, 1.990, 2.060, 2.141, 2.304, 2.341, 1.340,
+                                   1.444, 1.585, 1.547, 1.711, 1.760, 1.830, 1.901, 2.165, 2.179, 2.300, 2.302, 2.459, 2.507, 2.535, 2.574]
+        self.psf_fwhm['NIRISS'] = [1.40, 1.40, 1.50, 1.50, 1.50, 1.50, 1.50, 1.60, 1.70, 1.80, 1.80, 1.80]
+
+        self.dict_utils = {}
+        for instrument in self.filters:
+            self.dict_utils[instrument.upper()] = {self.filters[instrument.upper()][i]: {'psf fwhm': self.psf_fwhm[instrument.upper()][i]} for i in range(len(self.filters[instrument]))}
 
         self.imagename = None
         self.imagetype = None
@@ -110,6 +116,9 @@ class jwst_photclass(pdastroclass):
         self.radius_sky_out_px=None
         self.radius_for_mag_px=None
         
+        self.instrument = None
+        self.aperture = None
+        
         #self.phot=pdastroclass()
 
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
@@ -128,7 +137,12 @@ class jwst_photclass(pdastroclass):
         self.im = fits.open(imagename)
         self.primaryhdr = self.im['PRIMARY'].header
         self.scihdr = self.im['SCI'].header
-
+        
+        self.instrument = self.primaryhdr['INSTRUME']
+        self.aperture  = self.primaryhdr['APERNAME']
+        
+        if self.verbose: print(f'Instrument: {self.instrument}, aperture:{self.aperture}')
+        
         if imagetype is None:
             if re.search('cal\.fits$|tweakregstep\.fits',imagename):
                 self.imagetype = 'cal'
@@ -244,14 +258,30 @@ class jwst_photclass(pdastroclass):
     
         return data_bkgsub, std
     
-    def get_fwhm_psf(self,filt):
+    def get_fwhm_psf(self,filt,pupil, instrument=None):
         # in the future, this can be changed to get the values directly from CRDS
-        fwhm_psf = self.dict_utils[filt]['psf fwhm']
+        if instrument is None:
+            instrument = self.instrument
+        if instrument is None:
+            raise RuntimeError('Can\'t get FWHM, instrument is not known')
+            
+        # NIRISS is special: it has some filters in the pupil wheel
+        if instrument.upper() == 'NIRISS':
+            if re.search('^F',filt) is None:
+                if re.search('^F',pupil) is None:
+                    raise RuntimeError(f'can\'t figure out the NIRISS filter: {filt} {pupil}')
+                else:
+                    filt=pupil
+            else:
+                # all good!
+                pass
+            
+        fwhm_psf = self.dict_utils[instrument.upper()][filt]['psf fwhm']
         return(fwhm_psf)
         
         
 
-    def find_stars(self, threshold=3, var_bkg=False):
+    def find_stars(self, threshold=3, var_bkg=False, primaryhdr=None, scihdr=None):
         
         '''
         Parameters
@@ -268,13 +298,17 @@ class jwst_photclass(pdastroclass):
             
         '''
         
-        det = self.primaryhdr['DETECTOR']
-        filt = self.primaryhdr['FILTER']
+        if primaryhdr is None: primaryhdr=self.primaryhdr
+        if scihdr is None: scihdr=self.scihdr
+        
+        det = primaryhdr['DETECTOR']
+        filt = primaryhdr['FILTER']
+        pupil = primaryhdr['PUPIL']
         
         print('Finding stars --- Detector: {d}, Filter: {f}'.format(f=filt, d=det))
         
         #sigma_psf = self.dict_utils[filt]['psf fwhm']
-        fwhm_psf = self.get_fwhm_psf(filt)
+        fwhm_psf = self.get_fwhm_psf(filt,pupil)
     
         print('FWHM for the filter {f}:'.format(f=filt), fwhm_psf, "px")
 
@@ -297,10 +331,11 @@ class jwst_photclass(pdastroclass):
         
         return self.found_stars, self.data_bkgsub
     
-    def get_radii_phot(self, filt, radii_Nfwhm = None,                       
-                      radius_Nfwhm_sky_in = None, 
-                      radius_Nfwhm_sky_out = None,
-                      radius_Nfwhm_for_mag = None):
+    def get_radii_phot(self, filt, pupil, 
+                       radii_Nfwhm = None,                       
+                       radius_Nfwhm_sky_in = None, 
+                       radius_Nfwhm_sky_out = None,
+                       radius_Nfwhm_for_mag = None):
         if radii_Nfwhm is None:
             radii_Nfwhm = self.radii_Nfwhm
         if isinstance(radii_Nfwhm,float) or isinstance(radii_Nfwhm,int):
@@ -314,8 +349,10 @@ class jwst_photclass(pdastroclass):
            
         if radius_Nfwhm_sky_out is None:
            radius_Nfwhm_sky_out  = self.radius_Nfwhm_sky_out
+           
+          
         
-        fwhm = self.get_fwhm_psf(filt)
+        fwhm = self.get_fwhm_psf(filt,pupil)
         
         radii = [(fwhm*x) for x in radii_Nfwhm]
         radius_for_mag = fwhm*radius_Nfwhm_for_mag
@@ -331,17 +368,24 @@ class jwst_photclass(pdastroclass):
         return(f'{basecolname}_{radius:.1f}px')
 
     #def aperture_phot(self, radius=[3.5], sky_in=7, sky_out=10, add_radius_to_colname=False):
-    def aperture_phot(self, filt=None, radii_Nfwhm = None,
+    def aperture_phot(self, filt=None, pupil=None, 
+                      radii_Nfwhm = None,
                       radius_Nfwhm_sky_in = None, 
                       radius_Nfwhm_sky_out = None, 
-                      radius_Nfwhm_for_mag =None):
+                      radius_Nfwhm_for_mag =None,
+                      primaryhdr=None, scihdr=None):
         
-        if filt is None: filt = self.primaryhdr['FILTER']
+        if primaryhdr is None: primaryhdr=self.primaryhdr
+        if scihdr is None: scihdr=self.scihdr
+
+        if filt is None: filt = primaryhdr['FILTER']
+        if pupil is None: pupil = primaryhdr['PUPIL']
 
         (self.radii_px,
          self.radius_sky_in_px,
          self.radius_sky_out_px,
-         self.radius_for_mag_px) = self.get_radii_phot(filt,radii_Nfwhm = radii_Nfwhm,
+         self.radius_for_mag_px) = self.get_radii_phot(filt,pupil,
+                                                       radii_Nfwhm = radii_Nfwhm,
                                                        radius_Nfwhm_sky_in = radius_Nfwhm_sky_in, 
                                                        radius_Nfwhm_sky_out = radius_Nfwhm_sky_out, 
                                                        radius_Nfwhm_for_mag = radius_Nfwhm_for_mag)
@@ -463,17 +507,21 @@ class jwst_photclass(pdastroclass):
         (self.t.loc[ixs,xcol], self.t.loc[ixs,ycol]) = world_to_detector(self.t.loc[ixs,racol],self.t.loc[ixs,deccol])
 
     def radec_to_idl(self,racol='ra', deccol='dec', xcol_idl='x_idl', ycol_idl='y_idl',
-                     aperturename_instrument='NRCALL_FULL',
+                     aperturename=None,
                      primaryhdr=None, scihdr=None, indices=None):
 
         if primaryhdr is None: primaryhdr=self.primaryhdr
         if scihdr is None: scihdr=self.scihdr
+
+        if aperturename is None:
+            aperturename = self.aperture
+
     
         indices = self.getindices()
     
         x_idl, y_idl      = radec_to_idl(self.t.loc[indices,racol], 
                                          self.t.loc[indices,deccol],
-                                         aperturename_instrument, 
+                                         aperturename, 
                                          primaryhdr, scihdr)
         self.t.loc[indices,xcol_idl]=x_idl
         self.t.loc[indices,ycol_idl]=y_idl
@@ -481,17 +529,20 @@ class jwst_photclass(pdastroclass):
         return x_idl, y_idl
         
     def xy_to_idl(self,xcol='x', ycol='y', xcol_idl='x_idl', ycol_idl='y_idl',
-                     aperturename_instrument='NRCALL_FULL',
+                     aperturename=None,
                      primaryhdr=None, scihdr=None, indices=None):
 
         if primaryhdr is None: primaryhdr=self.primaryhdr
         if scihdr is None: scihdr=self.scihdr
     
+        if aperturename is None:
+            aperturename = self.aperture
+
         indices = self.getindices()
         print(self.t.loc[indices,xcol])
         x_idl, y_idl      = xy_to_idl(self.t.loc[indices,xcol], 
                                       self.t.loc[indices,ycol],
-                                      aperturename_instrument, 
+                                      aperturename, 
                                       primaryhdr, scihdr)
         self.t.loc[indices,xcol_idl]=x_idl
         self.t.loc[indices,ycol_idl]=y_idl
@@ -500,12 +551,15 @@ class jwst_photclass(pdastroclass):
     
     def match_gaiacat(self,gaia_catname,
                       max_sep = 1.0,
-                      aperturename_instrument='NRCALL_FULL',
+                      aperturename=None,
                       primaryhdr=None, scihdr=None,indices=None):
         print(f'Matching Gaia catalog {gaia_catname}')
 
         if primaryhdr is None: primaryhdr=self.primaryhdr
         if scihdr is None: scihdr=self.scihdr
+        
+        if aperturename is None:
+            aperturename = self.aperture
 
         gaiacat = pdastroclass()
         gaiacat.load_spacesep(gaia_catname)
@@ -527,7 +581,7 @@ class jwst_photclass(pdastroclass):
         # get ideal coords into table
         gaiacat.t['x_idl'], gaiacat.t['y_idl'] = radec_to_idl(gaiacat.t['ra'], 
                                                               gaiacat.t['dec'],
-                                                              aperturename_instrument, 
+                                                              aperturename, 
                                                               primaryhdr, scihdr)
 
         # cut down to the objects that are within the image

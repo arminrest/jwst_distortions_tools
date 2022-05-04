@@ -89,10 +89,21 @@ class test_distortions(pdastroclass):
         for ix in self.distortionfiles.getindices():
             
             # get the filter and save it in the 'filter' column
-            m = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+)_(f[a-zA-Z0-9]+)_([a-zA-Z0-9]+)',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
-            if m is None:
+            #m = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+)_(f[a-zA-Z0-9]+)_([a-zA-Z0-9]+)',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
+            #if m is None:
+            #    raise RuntimeError(f'could not parse filename {os.path.basename(self.distortionfiles.t.loc[ix,"filename"])} for aperture, filter and/or pupil!')
+            #aperture,filt,pupil = m.groups()
+
+            m1 = re.search('distortion_coeffs_([a-zA-Z0-9]+_[a-zA-Z0-9]+)_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.asdf',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
+            m2 = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+)_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.asdf',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
+            if m1 is not None:
+                aperture,filt,pupil = m1.groups()
+            elif m2 is not None:
+                aperture,filt,pupil = m2.groups()        
+            else:
                 raise RuntimeError(f'could not parse filename {os.path.basename(self.distortionfiles.t.loc[ix,"filename"])} for aperture, filter and/or pupil!')
-            aperture,filt,pupil = m.groups()
+
+
             self.distortionfiles.t.loc[ix,self.aperture_col]=f'{aperture}'
             self.distortionfiles.t.loc[ix,self.filter_col]=f'{filt}'
             self.distortionfiles.t.loc[ix,self.pupil_col]=f'{pupil}'
@@ -169,7 +180,7 @@ class test_distortions(pdastroclass):
             print(f'\n**********************************\n*** WARNING *** {len(ixs_not_matches)} out of {len(ixs_rate)} did not matched:')
             self.write(indices=ixs_not_matches)
             
-            
+        return(ixs_matches,ixs_not_matches)
 
 if __name__ == '__main__':
 
@@ -182,9 +193,9 @@ if __name__ == '__main__':
     testdist.get_rate_files(args.rate_files,directory=args.rate_dir)
     testdist.get_distortion_files(args.distortion_files,directory=None)
     
-    testdist.match_distortion4ratefile(require_filter=not args.ignore_filters, 
-                                       require_pupil=not args.ignore_pupils,
-                                       apertures=args.apertures, 
-                                       filts=args.filters, 
-                                       pupils=args.pupils)
+    ixs_matches = testdist.match_distortion4ratefile(require_filter=not args.ignore_filters, 
+                                                     require_pupil=not args.ignore_pupils,
+                                                     apertures=args.apertures, 
+                                                     filts=args.filters, 
+                                                     pupils=args.pupils)
     
