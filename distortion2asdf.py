@@ -181,6 +181,7 @@ class coeffs2asdf(pdastroclass):
     
     def load_coeff_file(self,filename):
         if self.verbose: print(f'Loading {filename}')
+        self.filename = filename
         # read the file
         #frames[counter] = pd.read_csv(filename,sep=',',skipinitialspace=True,comment='#')
         
@@ -662,6 +663,7 @@ if __name__ == '__main__':
     filenames=[]
     for filepattern in args.coeff_filepatterns:
         filenames.extend(glob.glob(filepattern))
+    filenames.sort()
     
     for filename in filenames:
         if re.search('\.txt$',filename):
