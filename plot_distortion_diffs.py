@@ -78,10 +78,11 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
     m1 = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(coeffref.filename))
     m2 = re.search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)\.distcoeff\.txt',os.path.basename(coeffref.filename))
     if m1 is not None:
-        filt,pupil = m1.groups()
+        filt,pupil = m1.groups(os.path.basename(coeffref.filename))
     elif m2 is not None:
         filt,pupil = m2.groups()        
     else:
+        print('Could not determine filter/pupil!!! {}')
         filt,pupil = (None,None)
     title = f'{coeffref.instrument} {coeffref.aperture} filt/pupil={filt}/{pupil} max(vec_maxs)={max_vec_maxs}mas\n vec_maxs={vec_maxs}mas'
     plt.title(title, fontdict=font2)
