@@ -44,6 +44,11 @@ class test_distortion_singleim:
         parser.add_argument('--skip_align2gaia_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the new distortion terms, assuming this has already been done, but still do the photometry.')
         parser.add_argument('--skip_if_exists', default=False, action='store_true', help='Skip doing the analysis of a given input image if the cal file already exists, assuming the full analysis has been already done')
 
+        parser.add_argument('--xoffset', type=float, default=0.0, help='Initial guess for X offset in arcsec for align_gaia step. (default=%(default)s)')
+        parser.add_argument('--yoffset', type=float, default=0.0, help='Initial guess for Y offset in arcsec for align_gaia step. (default=%(default)s)')
+        parser.add_argument('--searchrad', type=float, default=3.0, help='The search radius in arcsec for a match for align_gaia step. Note: currently, this valiue is divided by 10 when the actual search is done! (default=%(default)s)')
+
+
         parser.add_argument('-v','--verbose', default=0, action='count')
 
         return(parser)
@@ -149,12 +154,23 @@ class test_distortion_singleim:
                        searchrad=3.0, # (default=1.0): The search radius in arcsec for a match
                        minobj = 50, #integer(default=15) # Minimum number of objects acceptable for matching
                        min_gaia = 30, #integer(min=0, default=5) # Min number of GAIA sources needed
+                       xoffset = 0, # Initial guess for X offset in arcsec. (Default=0.0)
+                       yoffset = 0, # Initial guess for Y offset in arcsec. (Default=0.0)
                        outdir=None,overwrite=False, skip_if_exists=False):
         
         if tweakreg is None:
             tweakreg = TweakRegStep()
+            
+        print('TEST TEST',tweakreg.yoffset)    
+        
         tweakreg.align_to_gaia = True
         tweakreg.save_results = True
+        tweakreg.snr_threshold = snr_threshold
+        tweakreg.searchrad = searchrad
+        tweakreg.minobj = minobj
+        tweakreg.min_gaia = min_gaia
+        tweakreg.xoffset = xoffset
+        tweakreg.yoffset = yoffset
 
         # only correct for rotation and shift
         tweakreg.fitgeometry = 'rshift'
@@ -209,10 +225,16 @@ if __name__ == '__main__':
         print(f'{calimname} already exists, stopping since skip_if_exists=True')
         sys.exit(0)
         
-    testdist.calphot.verbose = testdist.verbose
-    testdist.calphot.run_phot(calimname,args.gaia_catname_for_testing,SNR_min=args.align_gaia_SNR_min)
+    if runflag:
+        testdist.calphot.verbose = testdist.verbose
+        testdist.calphot.run_phot(calimname,args.gaia_catname_for_testing,SNR_min=args.align_gaia_SNR_min)
+    else:
+        print('####### Skipping photometry on cal image!')
     
     (runflag,tweakregfilename) = testdist.run_align2Gaia(calimname,
+                xoffset = args.xoffset,
+                yoffset = args.yoffset,
+                searchrad = args.searchrad,
                 overwrite = args.overwrite, 
                 skip_if_exists = (args.skip_align2gaia_if_exists |  args.skip_if_exists))
 
@@ -220,5 +242,8 @@ if __name__ == '__main__':
         print(f'{tweakregfilename} already exists, stopping since skip_if_exists=True')
         sys.exit(0)
 
-    testdist.gaialignphot.verbose = testdist.verbose
-    testdist.gaialignphot.run_phot(tweakregfilename,args.gaia_catname_for_testing,SNR_min=args.align_gaia_SNR_min)
+    if runflag:
+        testdist.gaialignphot.verbose = testdist.verbose
+        testdist.gaialignphot.run_phot(tweakregfilename,args.gaia_catname_for_testing,SNR_min=args.align_gaia_SNR_min)
+    else:
+        print('####### Skipping photometry on tweakreg image!')
