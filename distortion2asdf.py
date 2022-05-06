@@ -91,6 +91,7 @@ class coeffs2asdf(pdastroclass):
         # subarray metadata-----------------------------------------------
         self.metadata['subarr']={}
         self.metadata['subarr']['FULL']=['GENERIC']
+        self.metadata['subarr']['FULL_WEDGE_RND']=['GENERIC']
         # NIRISS
         self.metadata['subarr']['FULLP']=['GENERIC']
         
@@ -149,8 +150,11 @@ class coeffs2asdf(pdastroclass):
         else:
             self.aperture = aperture
 
-
-        self.detector, self.subarr = self.aperture.split('_')
+        m = re.search('(^[a-zA-Z0-9]+)_(.*)',self.aperture)
+        if m is None:
+            raise RuntimeError(f'Could not get detector and aperture from {self.aperture}')
+        else:
+            self.detector, self.subarr = m.groups()
         
         if re.search('^NRC[AB]\d$',self.detector):
             self.instrument = "NIRCAM"
@@ -430,7 +434,7 @@ class coeffs2asdf(pdastroclass):
             else:
                 raise RuntimeError(f'camera {self.camera} not in {self.metadata["exptype"]}')
 
-        # if sci_exptype is None, use the default defined in self.metadata['subarr']
+        # if sci_subarr is None, use the default defined in self.metadata['subarr']
         # for the given self.subarr. self.subarr gets defined in self.get_instrument_info
         if sci_subarr is None:
             if self.subarr in self.metadata['subarr']:
@@ -460,7 +464,6 @@ class coeffs2asdf(pdastroclass):
     
         # Find the distance between (0,0) and the reference location
         xshift, yshift = self.get_refpix(inst_siaf, self.aperture,self.instrument)
-        
         
         # convert the coefficients into dictionaries
         xcoeffs = self.get_coeff_dict('Sci2IdlX')
@@ -546,7 +549,7 @@ class coeffs2asdf(pdastroclass):
     
         # Since the inverse of all model components are now defined,
         # the total model inverse is also defined automatically
-    
+
     
         # Save using the DistortionModel datamodel
         d = DistortionModel(model=model, input_units=u.pix,
@@ -592,6 +595,7 @@ class coeffs2asdf(pdastroclass):
         d.meta.telescope = 'JWST'
         d.meta.subarray.name = self.subarr
 
+
         if pedigree is None:
             d.meta.pedigree = 'FLIGHT'
         else:
@@ -611,8 +615,7 @@ class coeffs2asdf(pdastroclass):
             d.meta.description = "This is a distortion correction reference file."
         else:
             d.meta.description = descrip
-        
-    
+            
        #d.meta.exp_type = exp_type
         if useafter is None:
             d.meta.useafter = "2022-01-01T00:00:01"

@@ -11,6 +11,7 @@ from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB
 import pandas as pd
 from astropy.io import fits
 import numpy as np
+from test_distortions_single_image import test_distortion_singleim
 
 class test_distortions(pdastroclass):
     def __init__(self):
@@ -37,7 +38,7 @@ class test_distortions(pdastroclass):
 
 
         parser.add_argument('--rate_dir', default=ratedir, help='Directory in which the rate images are located, which will be used to test the distortions. (default=%(default)s)')
-        parser.add_argument('--rate_files', nargs='+', default=['*_rate.fits'], help='list of rate file(pattern)s to which the distortion files are applied to. If no path specified, "rate_dir" is used (default=%(default)s)')
+        parser.add_argument('--rate_files', nargs='+', default=['*_rate.fits'], help='list of rate file(pattern)s to which the distortion files are applied to. "rate_dir" is used if not None (default=%(default)s)')
         parser.add_argument('--distortion_files', nargs='+', default=['*.asdf'], help='list of the distortion file(pattern)s to be applied. (default=%(default)s)')
 
         parser.add_argument('--outdir', default='same_as_distortionfiles', help='output directory. If "same_as_distortionfiles", then the cal/photometry images are saved in the same directory as the distortion coefficient files (default=%(default)s)')
@@ -58,9 +59,10 @@ class test_distortions(pdastroclass):
     def get_files(self,filepatterns,directory=None):
         filenames=[]
         for filepattern in filepatterns:
-            (tmpdir,basename) = os.path.split(filepattern)
+            #(tmpdir,basename) = os.path.split(filepattern)
             #print(f'{tmpdir},{basename}')
-            if tmpdir =='' and (directory is not None):
+            #if tmpdir =='' and (directory is not None):
+            if directory is not None:
                 filepattern=os.path.join(directory,filepattern)
             if self.verbose>2: print(f'Looking for filepattern {filepattern}')
             filenames.extend(glob.glob(filepattern))
@@ -182,6 +184,25 @@ class test_distortions(pdastroclass):
             
         return(ixs_matches,ixs_not_matches)
 
+    def run_images(self, ixs, outdir='same_as_distortionfiles', outsubdir=None):
+        self.t.loc[ixs,'errorflag'] = None
+        for ix in ixs:
+            distfile = self.t.loc[ix,'distortion_match']
+            ratefile = self.t.loc[ix,'filename']
+            testdist = test_distortion_singleim()
+            testdist.verbose = self.verbose
+            
+            if outdir == 'same_as_distortionfiles':
+                outdir = os.path.dirname(distfile)
+                
+            testdist.set_outdir(outdir)
+
+            try:
+                testdist.run_all(ratefile,distfile)
+                self.t.loc[ix,'errorflag']=True
+            except:
+                self.t.loc[ix,'errorflag']=False
+
 if __name__ == '__main__':
 
     testdist = test_distortions()
@@ -193,9 +214,14 @@ if __name__ == '__main__':
     testdist.get_rate_files(args.rate_files,directory=args.rate_dir)
     testdist.get_distortion_files(args.distortion_files,directory=None)
     
-    ixs_matches = testdist.match_distortion4ratefile(require_filter=not args.ignore_filters, 
-                                                     require_pupil=not args.ignore_pupils,
-                                                     apertures=args.apertures, 
-                                                     filts=args.filters, 
-                                                     pupils=args.pupils)
+    ixs_matches,ixs_not_matches = testdist.match_distortion4ratefile(require_filter=not args.ignore_filters, 
+                                                                     require_pupil=not args.ignore_pupils,
+                                                                     apertures=args.apertures, 
+                                                                     filts=args.filters, 
+                                                                     pupils=args.pupils)
     
+    if len(ixs_matches)==0:
+        print('NO IMES FOUND!! exiting...')
+        sys.exit(0)
+
+    testdist.run_images(ixs_matches,outdir=args.outdir)

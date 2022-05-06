@@ -13,20 +13,12 @@ font1 = {'family': 'helvetica', 'color': 'black', 'weight': 'normal', 'size': '1
 font2 = {'family': 'helvetica', 'color': 'black', 'weight': 'normal', 'size': '20'}
 
 
-def overplot_distortion_diffs(t1,t2,plotref=True,
-                              XSciRef=1024.5,YSciRef=1024.5,
-                              XSciSize=2048, YSciSize=2048):
+
+
+def overplot_distortion_diffs(t1,t2, xg, yg, plotref=True):
     number_of_coefficients = len(t1['Sci2IdlX'])
     poly_degree = pysiaf.utils.polynomial.polynomial_degree(number_of_coefficients)
 
-    nx, ny = (25, 25)
-    x = np.linspace(1, XSciSize, nx)
-    y = np.linspace(1, YSciSize, ny)
-    x0 = XSciRef
-    y0 = YSciRef
-    #x0 = 0.0
-    #y0 = 0.0
-    xg, yg = np.meshgrid(x-x0, y-y0)
 
     xg_idl1 = pysiaf.utils.polynomial.poly(t1['Sci2IdlX'], xg, yg, order=poly_degree)
     yg_idl1 = pysiaf.utils.polynomial.poly(t1['Sci2IdlY'], xg, yg, order=poly_degree)
@@ -42,7 +34,63 @@ def overplot_distortion_diffs(t1,t2,plotref=True,
     plt.quiver(xg_idl1, yg_idl1, dx,dy, color='blue')
     return(vec_max)
 
-def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=False):
+def get_mesh(aperref,subarr,coron_region='all'):
+    nx, ny = (25, 25)
+    if subarr == 'FULL' or coron_region=='full':
+        x = np.linspace(1, aperref.XSciSize, nx)
+        y = np.linspace(1, aperref.YSciSize, ny)
+        x0 = aperref.XSciRef
+        y0 = aperref.YSciRef
+        #x0 = 0.0
+        #y0 = 0.0
+        xg, yg = np.meshgrid(x-x0, y-y0)
+        
+        print(f'XSciRef:{aperref.XSciRef} YSciRef:{aperref.YSciRef} :{aperref.XSciSize} YSciSize:{aperref.YSciSize}')
+    elif subarr == 'FULL_WEDGE_RND':
+        print(f'coron_region={coron_region}')
+        x = np.linspace(150, 1800, nx)
+        if coron_region=='all':
+            #x = np.linspace(150, 1700, nx)
+            #y = np.linspace(1, 1800, ny)
+            y = np.linspace(1, 1820, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            print(x,y)
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='top':
+            #x = np.linspace(150, 1700, nx)
+            y = np.linspace(1470, 1820, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='topcore':
+            x = np.linspace(300, 1650, nx)
+            y = np.linspace(1520, 1750, ny)
+            #y = np.linspace(1, 1750, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='bottom':
+            #x = np.linspace(150, 1700, nx)
+            y = np.linspace(1, 1470, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        else:
+            raise RuntimeError(f'coron_region={coron_region} not known!')
+    else:
+        raise RuntimeError(f'subarr={subarr} not known!')
+    return(xg,yg)
+
+def plot_distortion_diffs(coeffref,coefflist, coron_region='all', output_plot_name=None,showplot=False):
     plt.clf()
     plt.rc('font', family='serif')
     plt.figure(figsize=(12,12))
@@ -54,12 +102,12 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
     #plt.rcParams['xtick.labelsize'] = plt.rcParams['ytick.labelsize'] = 20
 
     coeffref.get_instrument_info()
-    print(f'Instrument: {coeffref.instrument} Aperture:{coeffref.aperture}')
+    print(f'Instrument: {coeffref.instrument} Aperture:{coeffref.aperture} subarray:{coeffref.subarr}')
     siafref = pysiaf.Siaf(coeffref.instrument)
     aperref = siafref[coeffref.aperture]
     
-    print(f'XSciRef:{aperref.XSciRef} YSciRef:{aperref.YSciRef} :{aperref.XSciSize} YSciSize:{aperref.YSciSize}')
-    
+    (xg,yg) = get_mesh(aperref,coeffref.subarr,coron_region=coron_region)
+
     vec_maxs = []
     for i,coeff in enumerate(coefflist):
         coeff.get_instrument_info()
@@ -69,16 +117,16 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
         if coeff.aperture!=coeffref.aperture:
             raise RuntimeError(f'inconsistent aperture: {coeff.aperture}!={coeffref.aperture}')
 
-        vec_max = overplot_distortion_diffs(coeffref.t,coeff.t,plotref=(i==0),
-                                            XSciRef=aperref.XSciRef,YSciRef=aperref.YSciRef,
-                                            XSciSize=aperref.XSciSize, YSciSize=aperref.YSciSize)
+        vec_max = overplot_distortion_diffs(coeffref.t,coeff.t,xg,yg,plotref=(i==0))
         print(f'{coeff.filename} max vec: {vec_max}')
         vec_maxs.append(float(f'{vec_max*1000:.1f}'))
     max_vec_maxs = np.amax(np.array(vec_maxs))
-    m1 = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(coeffref.filename))
-    m2 = re.search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.distcoeff\.txt',os.path.basename(coeffref.filename))
+    #m1 = re.search(f'distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(coeffref.filename))
+    #m2 = re.search('^[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.distcoeff\.txt',os.path.basename(coeffref.filename))
+    m1 = re.search(f'distortion_coeffs_{coeffref.aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_jw',os.path.basename(coeffref.filename))
+    m2 = re.search(f'^{coeffref.aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.distcoeff\.txt',os.path.basename(coeffref.filename))
     if m1 is not None:
-        filt,pupil = m1.groups(os.path.basename(coeffref.filename))
+        filt,pupil = m1.groups()
     elif m2 is not None:
         filt,pupil = m2.groups()        
     else:
@@ -96,7 +144,10 @@ def plot_distortion_diffs(coeffref,coefflist,output_plot_name=None,showplot=Fals
     if showplot:
         plt.show()
 
-def plot_distortionfiles_diffs(coefffileref,coefffilelist,output_plot_name=None,showplot=False):
+def plot_distortionfiles_diffs(coefffileref,coefffilelist,
+                               coron_region = 'all',
+                               output_plot_name=None,
+                               showplot=False):
     coeffref = coeffs2asdf()
     print(f'Loading reference coefficient file {coefffileref}')
     coeffref.load_coeff_file(coefffileref)
@@ -107,14 +158,17 @@ def plot_distortionfiles_diffs(coefffileref,coefffilelist,output_plot_name=None,
         print(f'Loading {filename}')
         coeffs.load_coeff_file(filename)
         coefflist.append(coeffs)
-   
-    plot_distortion_diffs(coeffref,coefflist,output_plot_name=output_plot_name,showplot=showplot)
+    plot_distortion_diffs(coeffref,coefflist,coron_region=coron_region,
+                          output_plot_name=output_plot_name,showplot=showplot)
     
 def define_options(parser=None,usage=None,conflict_handler='resolve'):
     if parser is None:
         parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 
     parser.add_argument('coeff_filepatterns', nargs='+', type=str, default=None, help='list of coefficient file(pattern)s. The first one will be the reference coefficients.')
+
+    parser.add_argument('--coron_region', type=str, default='all', choices=['top','topcore','bottom','all','full'], help='for coronography: specify the region of interest (default=%(default)s)')
+    
 
     parser.add_argument('-v','--verbose', default=0, action='count')
     parser.add_argument('-p','--showplot', action='store_true', default=False, help='show the residual plot (default=%(default)s)')
@@ -141,4 +195,7 @@ if __name__ == '__main__':
     filenames=filenames[1:]
     filenames.sort()
 
-    plot_distortionfiles_diffs(refile,filenames,showplot=args.showplot,output_plot_name=args.saveplot)
+    plot_distortionfiles_diffs(refile,filenames,
+                               coron_region = args.coron_region,
+                               showplot=args.showplot,
+                               output_plot_name=args.saveplot)

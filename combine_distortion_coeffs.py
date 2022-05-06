@@ -57,6 +57,7 @@ class combine_coeffs(pdastrostatsclass):
 
         parser.add_argument('--showplot', default=False, action='store_true', help='show the difference of the input coefficients with respect to the combined distortion file')
         parser.add_argument('--saveplot', default=False, action='store_true', help='save the difference of the input coefficients with respect to the combined distortion file as pdf file')
+        parser.add_argument('--coron_region', type=str, default='all', choices=['top','topcore','bottom','all','full'], help='for coronography: specify the region of interest to be plotted (default=%(default)s)')
         return(parser)
     
     def load_coeff_files(self,coeff_filepatterns,require_filter=True,require_pupil=True):
@@ -81,16 +82,32 @@ class combine_coeffs(pdastrostatsclass):
                 # save the filename 
                 frames[counter]['filename']=filename
                 
+                print(frames[counter]['AperName'],unique(frames[counter]['AperName']))
+                aperture = unique(frames[counter]['AperName'])[0]
+                
                 # get the filter and save it in the 'filter' column
-                m = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(filename))
-                if m is None:
-                    if require_filter or require_pupil:
-                        raise RuntimeError(f'could not parse filename {filename} for filter and/or pupil!')
-                    else: 
-                        print(f'WARNING! could not parse filename {filename} for filter and/or pupil!')
-                    filt=pupil=None
+                m1 = re.search(f'distortion_coeffs_{aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_jw',os.path.basename(filename))
+                m2 = re.search(f'^{aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.distcoeff\.txt',os.path.basename(filename))
+                if m1 is not None:
+                    filt,pupil = m1.groups()
+                elif m2 is not None:
+                    filt,pupil = m2.groups()        
                 else:
-                    filt,pupil = m.groups()
+                    if require_filter or require_pupil:
+                        raise RuntimeError(f'could not parse filename {os.path.basename(filename)} for filter and/or pupil!')
+                    else: 
+                        print(f'WARNING! could not parse filename {os.path.basename(filename)} for filter and/or pupil!')
+                    filt=pupil=None
+                
+                #m = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(filename))
+                #if m is None:
+                #    if require_filter or require_pupil:
+                #        raise RuntimeError(f'could not parse filename {filename} for filter and/or pupil!')
+                #    else: 
+                #        print(f'WARNING! could not parse filename {filename} for filter and/or pupil!')
+                #    filt=pupil=None
+                #else:
+                #    filt,pupil = m.groups()
 
                 frames[counter]['filter']=filt
                 frames[counter]['pupil']=pupil
@@ -207,6 +224,7 @@ class combine_coeffs(pdastrostatsclass):
                 else:
                     plotfilename = None
                 plot_distortionfiles_diffs(f'{outbasename}.distcoeff.txt',inputfilenames,
+                                           coron_region=args.coron_region,
                                            showplot=showplot,output_plot_name=plotfilename)        
 
 
@@ -234,7 +252,7 @@ class combine_coeffs(pdastrostatsclass):
             outname += '_na'
         
         if add2basename is not None:
-            outname += f'_{add2basename}'
+            outname += f'.{add2basename}'
             
         if Nfiles is not None:
             outname += f'.N{Nfiles:02}'

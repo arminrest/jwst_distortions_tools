@@ -53,7 +53,7 @@ class test_distortion_singleim:
 
         return(parser)
 
-    def set_outdir(self,outrootdir,outsubdir):
+    def set_outdir(self,outrootdir=None,outsubdir=None):
         self.outdir = outrootdir
         if self.outdir is None: self.outdir = '.'
         
@@ -161,8 +161,6 @@ class test_distortion_singleim:
         if tweakreg is None:
             tweakreg = TweakRegStep()
             
-        print('TEST TEST',tweakreg.yoffset)    
-        
         tweakreg.align_to_gaia = True
         tweakreg.save_results = True
         tweakreg.snr_threshold = snr_threshold
@@ -206,6 +204,52 @@ class test_distortion_singleim:
 
         # return True means that rate2cal did run
         return(True,tweakregfilename)
+    
+    def run_all(self,rate_image,
+                distortion_file,
+                overwrite = False,
+                skip_if_exists = False,
+                skip_rate2cal_if_exists = False,
+                skip_align2gaia_if_exists = False,
+                gaia_catname_for_testing = './LMC_gaia_DR3.nrcposs',
+                align_gaia_SNR_min = 10.0,
+                searchrad = 3.0,
+                xoffset = 0.0,
+                yoffset = 0.0,
+                ):
+        
+        (runflag,calimname) = self.run_rate2cal(rate_image,
+                    distortion_file,
+                    overwrite = overwrite, 
+                    skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
+        
+        if not runflag and skip_if_exists:
+            print(f'{calimname} already exists, stopping since skip_if_exists=True')
+            sys.exit(0)
+            
+        if runflag:
+            self.calphot.verbose = self.verbose
+            self.calphot.run_phot(calimname,gaia_catname_for_testing,SNR_min=align_gaia_SNR_min)
+        else:
+            print('####### Skipping photometry on cal image!')
+        
+        (runflag,tweakregfilename) = self.run_align2Gaia(calimname,
+                    xoffset = xoffset,
+                    yoffset = yoffset,
+                    searchrad = searchrad,
+                    overwrite = overwrite, 
+                    skip_if_exists = (skip_align2gaia_if_exists |  skip_if_exists))
+    
+        if not runflag and skip_if_exists:
+            print(f'{tweakregfilename} already exists, stopping since skip_if_exists=True')
+            sys.exit(0)
+    
+        if runflag:
+            self.gaialignphot.verbose = self.verbose
+            self.gaialignphot.run_phot(tweakregfilename,gaia_catname_for_testing,SNR_min=align_gaia_SNR_min)
+        else:
+            print('####### Skipping photometry on tweakreg image!')
+        return(0)
         
 if __name__ == '__main__':
     testdist = test_distortion_singleim()
@@ -215,6 +259,21 @@ if __name__ == '__main__':
     testdist.verbose=args.verbose
     
     testdist.set_outdir(args.outrootdir, args.outsubdir)
+    
+    testdist.run_all(args.rate_image,
+                     args.distortion_file,
+                     overwrite = args.overwrite,
+                     skip_if_exists = args.skip_if_exists,
+                     skip_rate2cal_if_exists = args.skip_rate2cal_if_exists,
+                     skip_align2gaia_if_exists = args.skip_align2gaia_if_exists,
+                     gaia_catname_for_testing = args.gaia_catname_for_testing,
+                     align_gaia_SNR_min = args.align_gaia_SNR_min,
+                     searchrad  = args.searchrad,
+                     xoffset = args.xoffset,
+                     yoffset = args.yoffset)
+    
+    """
+    sys.exit(0)
     
     (runflag,calimname) = testdist.run_rate2cal(args.rate_image,
                 args.distortion_file,
@@ -247,3 +306,4 @@ if __name__ == '__main__':
         testdist.gaialignphot.run_phot(tweakregfilename,args.gaia_catname_for_testing,SNR_min=args.align_gaia_SNR_min)
     else:
         print('####### Skipping photometry on tweakreg image!')
+    """
