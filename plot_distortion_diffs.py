@@ -8,6 +8,7 @@ import numpy as np
 from astropy.io import ascii
 from distortion2asdf import coeffs2asdf
 from jwst import datamodels
+from pdastro import pdastroclass,unique
 
 font1 = {'family': 'helvetica', 'color': 'black', 'weight': 'normal', 'size': '12'}
 font2 = {'family': 'helvetica', 'color': 'black', 'weight': 'normal', 'size': '20'}
@@ -34,7 +35,7 @@ def overplot_distortion_diffs(t1,t2, xg, yg, plotref=True):
     plt.quiver(xg_idl1, yg_idl1, dx,dy, color='blue')
     return(vec_max)
 
-def get_mesh(aperref,subarr,coron_region='all'):
+def get_mesh(detector,aperref,subarr,coron_region='all'):
     nx, ny = (25, 25)
     if subarr == 'FULL' or coron_region=='full':
         x = np.linspace(1, aperref.XSciSize, nx)
@@ -46,7 +47,7 @@ def get_mesh(aperref,subarr,coron_region='all'):
         xg, yg = np.meshgrid(x-x0, y-y0)
         
         print(f'XSciRef:{aperref.XSciRef} YSciRef:{aperref.YSciRef} :{aperref.XSciSize} YSciSize:{aperref.YSciSize}')
-    elif subarr == 'FULL_WEDGE_RND':
+    elif (subarr in ['FULL_WEDGE_RND','FULL_WEDGE_BAR']) and (detector=='NRCA5'):
         print(f'coron_region={coron_region}')
         x = np.linspace(150, 1800, nx)
         if coron_region=='all':
@@ -84,6 +85,44 @@ def get_mesh(aperref,subarr,coron_region='all'):
             #x0 = 0.0
             #y0 = 0.0
             xg, yg = np.meshgrid(x-x0, y-y0)
+    elif (subarr in ['FULL_WEDGE_RND','FULL_WEDGE_BAR']) and (detector=='NRCA2'):
+        print(f'coron_region={coron_region}')
+        x = np.linspace(341, 2048, nx)
+        if coron_region=='all':
+            #x = np.linspace(150, 1700, nx)
+            #y = np.linspace(1, 1800, ny)
+            y = np.linspace(1, 1700, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            print(x,y)
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='top':
+            #x = np.linspace(150, 1700, nx)
+            y = np.linspace(1151, 1700, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='topcore':
+            x = np.linspace(500, 1800, nx)
+            y = np.linspace(1250, 1600, ny)
+            #y = np.linspace(1, 1750, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='bottom':
+            #x = np.linspace(150, 1700, nx)
+            y = np.linspace(1, 1150, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
         else:
             raise RuntimeError(f'coron_region={coron_region} not known!')
     else:
@@ -106,7 +145,7 @@ def plot_distortion_diffs(coeffref,coefflist, coron_region='all', output_plot_na
     siafref = pysiaf.Siaf(coeffref.instrument)
     aperref = siafref[coeffref.aperture]
     
-    (xg,yg) = get_mesh(aperref,coeffref.subarr,coron_region=coron_region)
+    (xg,yg) = get_mesh(coeffref.detector, aperref,coeffref.subarr,coron_region=coron_region)
 
     vec_maxs = []
     for i,coeff in enumerate(coefflist):
@@ -118,7 +157,7 @@ def plot_distortion_diffs(coeffref,coefflist, coron_region='all', output_plot_na
             raise RuntimeError(f'inconsistent aperture: {coeff.aperture}!={coeffref.aperture}')
 
         vec_max = overplot_distortion_diffs(coeffref.t,coeff.t,xg,yg,plotref=(i==0))
-        print(f'{coeff.filename} max vec: {vec_max}')
+        print(f'{coeff.filename} {vec_max} maxvec_arcsec')
         vec_maxs.append(float(f'{vec_max*1000:.1f}'))
     max_vec_maxs = np.amax(np.array(vec_maxs))
     #m1 = re.search(f'distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(coeffref.filename))
@@ -183,11 +222,30 @@ if __name__ == '__main__':
     
     filenames=[]
     for filepattern in args.coeff_filepatterns:
-        newfiles = glob.glob(filepattern)
-        if len(newfiles)==0:
-            raise RuntimeError(f'No files for file(pattern) {filepattern}')
-        filenames.extend(newfiles)
-    
+        if re.search('singlefile\.txt$',filepattern):
+            # get the input filenames from the singlefile files!
+            infofiles=glob.glob(filepattern)
+            if len(infofiles)==0:
+                raise RuntimeError(f'Could not find any files that match {filepattern}')
+            for infofile in infofiles:
+                info = pdastroclass()
+                info.load(infofile)
+                filenames.extend(unique(info.t['filename']))
+        elif re.search('goodfiles\.txt$',filepattern):
+            # get the input filenames from the singlefile files!
+            infofiles=glob.glob(filepattern)
+            if len(infofiles)==0:
+                raise RuntimeError(f'Could not find any files that match {filepattern}')
+            for infofile in infofiles:
+                info = pdastroclass()
+                info.load(infofile,comment='#')
+                filenames.extend(unique(info.t['filename']))
+        else:
+            newfilenames = glob.glob(filepattern)
+            if len(newfilenames)==0:
+                raise RuntimeError(f'Could not find any files that match {filepattern}')
+            filenames.extend(newfilenames)            
+
     if len(filenames)<2:
         raise RuntimeError(f'At least 2 files required, only {filenames}')
     

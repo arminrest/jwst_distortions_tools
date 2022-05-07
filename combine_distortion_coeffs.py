@@ -40,7 +40,10 @@ class combine_coeffs(pdastrostatsclass):
         else:
             outrootdir = None
 
-        parser.add_argument('coeff_filepatterns', nargs='+', type=str, default=None, help='list of coefficient file(pattern)s')
+        parser.add_argument('coeff_filepatterns', nargs='+', type=str, default=None, help='list of coefficient file(pattern)s. This can also be a *.singlefile.txt (output from this script) or a *goodfiles.txt with a column "filename", and the files in that list are used')
+
+        parser.add_argument('--skip_if_file_not_exists', default=False, action='store_true', help='Do not throw an error if an input file does not exist, just skip it.')
+
 
         parser.add_argument('-v','--verbose', default=0, action='count')
 
@@ -60,63 +63,97 @@ class combine_coeffs(pdastrostatsclass):
         parser.add_argument('--coron_region', type=str, default='all', choices=['top','topcore','bottom','all','full'], help='for coronography: specify the region of interest to be plotted (default=%(default)s)')
         return(parser)
     
-    def load_coeff_files(self,coeff_filepatterns,require_filter=True,require_pupil=True):
+    def load_coeff_files(self,coeff_filepatterns,
+                         skip_if_file_not_exists = False,
+                         require_filter=True,require_pupil=True):
         counter = 0
         frames={}
+        filenames = []
         for filepattern in coeff_filepatterns:
-            filenames = glob.glob(filepattern)
-            for filename in filenames:
-                if self.verbose: print(f'Loading {filename}')
-                # read the file
-                frames[counter] = pd.read_csv(filename,skipinitialspace=True,comment='#')
+            if re.search('singlefile\.txt$',filepattern):
+                # get the input filenames from the singlefile files!
+                infofiles=glob.glob(filepattern)
+                if len(infofiles)==0:
+                    raise RuntimeError(f'Could not find any files that match {filepattern}')
+                for infofile in infofiles:
+                    info = pdastroclass()
+                    info.load(infofile)
+                    filenames.extend(unique(info.t['filename']))
+            elif re.search('goodfiles\.txt$',filepattern):
+                # get the input filenames from the singlefile files!
+                infofiles=glob.glob(filepattern)
+                if len(infofiles)==0:
+                    raise RuntimeError(f'Could not find any files that match {filepattern}')
+                for infofile in infofiles:
+                    info = pdastroclass()
+                    info.load(infofile,comment='#')
+                    filenames.extend(unique(info.t['filename']))
+            else:
+                newfilenames = glob.glob(filepattern)
+                if len(newfilenames)==0:
+                    raise RuntimeError(f'Could not find any files that match {filepattern}')
+                filenames.extend(newfilenames)            
+        filenames = unique(filenames)
+        filenames.sort()
 
-                # some of the column names have spaces, removed them!!
-                mapper={}
-                for col in frames[counter].columns:
-                    if re.search('\s+',col):
-                        mapper[col]=re.sub('\s+','',col)
-                    if is_string_dtype(frames[counter][col]):
-                        frames[counter][col] = frames[counter][col].str.strip()
-                frames[counter] = frames[counter].rename(columns=mapper)
-                
-                # save the filename 
-                frames[counter]['filename']=filename
-                
-                print(frames[counter]['AperName'],unique(frames[counter]['AperName']))
-                aperture = unique(frames[counter]['AperName'])[0]
-                
-                # get the filter and save it in the 'filter' column
-                m1 = re.search(f'distortion_coeffs_{aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_jw',os.path.basename(filename))
-                m2 = re.search(f'^{aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.distcoeff\.txt',os.path.basename(filename))
-                if m1 is not None:
-                    filt,pupil = m1.groups()
-                elif m2 is not None:
-                    filt,pupil = m2.groups()        
+        for filename in filenames:
+            if not os.path.isfile(filename):
+                if skip_if_file_not_exists:
+                    print(f'\n*** WARNING ****\n file{filename} does not exist! skipping')
+                    continue
                 else:
-                    if require_filter or require_pupil:
-                        raise RuntimeError(f'could not parse filename {os.path.basename(filename)} for filter and/or pupil!')
-                    else: 
-                        print(f'WARNING! could not parse filename {os.path.basename(filename)} for filter and/or pupil!')
-                    filt=pupil=None
-                
-                #m = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(filename))
-                #if m is None:
-                #    if require_filter or require_pupil:
-                #        raise RuntimeError(f'could not parse filename {filename} for filter and/or pupil!')
-                #    else: 
-                #        print(f'WARNING! could not parse filename {filename} for filter and/or pupil!')
-                #    filt=pupil=None
-                #else:
-                #    filt,pupil = m.groups()
+                    raise RuntimeError(f'file{filename} does not exist!')
+            if self.verbose: print(f'Loading {filename}')
+            # read the file
+            frames[counter] = pd.read_csv(filename,skipinitialspace=True,comment='#')
 
-                frames[counter]['filter']=filt
-                frames[counter]['pupil']=pupil
+            # some of the column names have spaces, removed them!!
+            mapper={}
+            for col in frames[counter].columns:
+                if re.search('\s+',col):
+                    mapper[col]=re.sub('\s+','',col)
+                if is_string_dtype(frames[counter][col]):
+                    frames[counter][col] = frames[counter][col].str.strip()
+            frames[counter] = frames[counter].rename(columns=mapper)
+            
+            # save the filename 
+            frames[counter]['filename']=filename
+            
+            #print(frames[counter]['AperName'],unique(frames[counter]['AperName']))
+            aperture = unique(frames[counter]['AperName'])[0]
+            
+            # get the filter and save it in the 'filter' column
+            m1 = re.search(f'distortion_coeffs_{aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_jw',os.path.basename(filename))
+            m2 = re.search(f'^{aperture.lower()}_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.distcoeff\.txt',os.path.basename(filename))
+            if m1 is not None:
+                filt,pupil = m1.groups()
+            elif m2 is not None:
+                filt,pupil = m2.groups()        
+            else:
+                if require_filter or require_pupil:
+                    raise RuntimeError(f'could not parse filename {os.path.basename(filename)} for filter and/or pupil!')
+                else: 
+                    print(f'WARNING! could not parse filename {os.path.basename(filename)} for filter and/or pupil!')
+                filt=pupil=None
+            
+            #m = re.search('distortion_coeffs_[a-zA-Z0-9]+_[a-zA-Z0-9]+_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_',os.path.basename(filename))
+            #if m is None:
+            #    if require_filter or require_pupil:
+            #        raise RuntimeError(f'could not parse filename {filename} for filter and/or pupil!')
+            #    else: 
+            #        print(f'WARNING! could not parse filename {filename} for filter and/or pupil!')
+            #    filt=pupil=None
+            #else:
+            #    filt,pupil = m.groups()
 
-                
-                if len(frames[counter])<1:
-                    raise RuntimeError(f'file {filename} has no data!')
-                                    
-                counter+=1
+            frames[counter]['filter']=filt
+            frames[counter]['pupil']=pupil
+
+            
+            if len(frames[counter])<1:
+                raise RuntimeError(f'file {filename} has no data!')
+                                
+            counter+=1
         if self.verbose: print(f'Loaded {counter} coeff files')
         self.t = pd.concat(frames,ignore_index=True)
 
@@ -138,6 +175,7 @@ class combine_coeffs(pdastrostatsclass):
         siaf_indexs.sort()
         
         inputfilenames = unique(self.t.loc[indices,'filename'])
+        inputfilenames.sort()
         
         if self.verbose: print(f'siaf_indexs: {siaf_indexs}')
         
@@ -338,6 +376,7 @@ if __name__ == '__main__':
     coeffs.verbose=args.verbose
 
     coeffs.load_coeff_files(args.coeff_filepatterns, 
+                            skip_if_file_not_exists = args.skip_if_file_not_exists,
                             require_filter = not args.ignore_filters,
                             require_pupil = not args.ignore_pupils)
     

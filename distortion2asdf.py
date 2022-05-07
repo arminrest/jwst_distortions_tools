@@ -79,6 +79,10 @@ class coeffs2asdf(pdastroclass):
         self.metadata['imaging_pupil']={}
         self.metadata['imaging_pupil']['NRC_SW']=['CLEAR', 'F162M', 'F164N', 'GDHS0', 'GDHS60', 'WLM8', 'WLP8', 'PINHOLES', 'MASKIPR', 'FLAT']
         self.metadata['imaging_pupil']['NRC_LW']=['CLEAR', 'F323N', 'F405N', 'F466N', 'F470N', 'PINHOLES', 'MASKIPR', 'GRISMR', 'GRISMC', 'FLAT']
+        # NIRCam mask
+        self.metadata['imaging_pupil']['FULL_WEDGE_RND']=['MASKRND']
+        self.metadata['imaging_pupil']['FULL_WEDGE_BAR']=['MASKBAR']
+        #self.metadata['imaging_pupil']['']=['MASKBAR']
 
         # EXPTYPE metadata-----------------------------------------------
         self.metadata['exptype']={}
@@ -92,6 +96,7 @@ class coeffs2asdf(pdastroclass):
         self.metadata['subarr']={}
         self.metadata['subarr']['FULL']=['GENERIC']
         self.metadata['subarr']['FULL_WEDGE_RND']=['GENERIC']
+        self.metadata['subarr']['FULL_WEDGE_BAR']=['GENERIC']
         # NIRISS
         self.metadata['subarr']['FULLP']=['GENERIC']
         
@@ -416,15 +421,19 @@ class coeffs2asdf(pdastroclass):
         
         # if sci_pupil is None, use the default defined in self.metadata['imaging_pupil']
         # for the given self.camera. self.camera gets defined in self.get_instrument_info
-        if sci_pupil is None:
-            if self.camera in self.metadata['imaging_pupil']:
-                sci_pupil = self.metadata['imaging_pupil'][self.camera]
-            else:
-                if self.instrument=='NIRISS':
-                    # NIRISS doesn't have imaging_pupil
-                    pass
+        if self.instrument=='NIRISS':
+            # NIRISS doesn't have imaging_pupil
+            pass
+        elif self.instrument=='NIRCAM':
+            if sci_pupil is None:
+                if self.subarr in self.metadata['imaging_pupil']:
+                    sci_pupil = self.metadata['imaging_pupil'][self.subarr]                
+                elif self.camera in self.metadata['imaging_pupil']:
+                    sci_pupil = self.metadata['imaging_pupil'][self.camera]
                 else:
-                    raise RuntimeError(f'camera {self.camera} not in {self.metadata["imaging_pupil"]}')
+                    raise RuntimeError('not able to determine sci_pupil')
+        else:
+            raise RuntimeError(f'camera {self.camera} not in {self.metadata["imaging_pupil"]}')
 
         # if sci_exptype is None, use the default defined in self.metadata['exptype']
         # for the given self.camera. self.camera gets defined in self.get_instrument_info
@@ -593,7 +602,10 @@ class coeffs2asdf(pdastroclass):
             detector = detector[0:4] + 'LONG'
         d.meta.instrument.detector = detector
         d.meta.telescope = 'JWST'
-        d.meta.subarray.name = self.subarr
+        if self.subarr in ['FULL_WEDGE_RND','FULL_WEDGE_BAR']:            
+            d.meta.subarray.name = 'FULL'
+        else:
+            d.meta.subarray.name = self.subarr
 
 
         if pedigree is None:
