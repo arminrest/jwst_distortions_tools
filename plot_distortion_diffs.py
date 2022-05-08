@@ -47,9 +47,9 @@ def get_mesh(detector,aperref,subarr,coron_region='all'):
         xg, yg = np.meshgrid(x-x0, y-y0)
         
         print(f'XSciRef:{aperref.XSciRef} YSciRef:{aperref.YSciRef} :{aperref.XSciSize} YSciSize:{aperref.YSciSize}')
-    elif (subarr in ['FULL_WEDGE_RND','FULL_WEDGE_BAR']) and (detector=='NRCA5'):
+    elif detector=='NRCA5':
         print(f'coron_region={coron_region}')
-        x = np.linspace(150, 1800, nx)
+        x = np.linspace(171, 1800, nx)
         if coron_region=='all':
             #x = np.linspace(150, 1700, nx)
             #y = np.linspace(1, 1800, ny)
@@ -85,9 +85,49 @@ def get_mesh(detector,aperref,subarr,coron_region='all'):
             #x0 = 0.0
             #y0 = 0.0
             xg, yg = np.meshgrid(x-x0, y-y0)
-    elif (subarr in ['FULL_WEDGE_RND','FULL_WEDGE_BAR']) and (detector=='NRCA2'):
+    elif detector=='NRCA2':
         print(f'coron_region={coron_region}')
-        x = np.linspace(341, 2048, nx)
+        x = np.linspace(401, 2048, nx)
+        if coron_region=='all':
+            #x = np.linspace(150, 1700, nx)
+            #y = np.linspace(1, 1800, ny)
+            y = np.linspace(1, 1800, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            print(x,y)
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='top':
+            #x = np.linspace(150, 1700, nx)
+            y = np.linspace(1151, 1800, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='topcore':
+            x = np.linspace(500, 1900, nx)
+            y = np.linspace(1250, 1700, ny)
+            #y = np.linspace(1, 1750, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        elif coron_region=='bottom':
+            #x = np.linspace(150, 1700, nx)
+            y = np.linspace(1, 1150, ny)
+            x0 = aperref.XSciRef
+            y0 = aperref.YSciRef
+            #x0 = 0.0
+            #y0 = 0.0
+            xg, yg = np.meshgrid(x-x0, y-y0)
+        else:
+            raise RuntimeError(f'coron_region={coron_region} not known!')
+    elif detector=='NRCA4':
+        print(f'coron_region={coron_region}')
+        x = np.linspace(1, 1500, nx)
         if coron_region=='all':
             #x = np.linspace(150, 1700, nx)
             #y = np.linspace(1, 1800, ny)
@@ -100,15 +140,15 @@ def get_mesh(detector,aperref,subarr,coron_region='all'):
             xg, yg = np.meshgrid(x-x0, y-y0)
         elif coron_region=='top':
             #x = np.linspace(150, 1700, nx)
-            y = np.linspace(1151, 1700, ny)
+            y = np.linspace(1151, 1800, ny)
             x0 = aperref.XSciRef
             y0 = aperref.YSciRef
             #x0 = 0.0
             #y0 = 0.0
             xg, yg = np.meshgrid(x-x0, y-y0)
         elif coron_region=='topcore':
-            x = np.linspace(500, 1800, nx)
-            y = np.linspace(1250, 1600, ny)
+            x = np.linspace(100, 1400, nx)
+            y = np.linspace(1250, 1700, ny)
             #y = np.linspace(1, 1750, ny)
             x0 = aperref.XSciRef
             y0 = aperref.YSciRef
@@ -126,7 +166,7 @@ def get_mesh(detector,aperref,subarr,coron_region='all'):
         else:
             raise RuntimeError(f'coron_region={coron_region} not known!')
     else:
-        raise RuntimeError(f'subarr={subarr} not known!')
+        raise RuntimeError(f'subarr={subarr} and/or detector {detector} not known!')
     return(xg,yg)
 
 def plot_distortion_diffs(coeffref,coefflist, coron_region='all', output_plot_name=None,showplot=False):
