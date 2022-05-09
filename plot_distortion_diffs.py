@@ -37,7 +37,7 @@ def overplot_distortion_diffs(t1,t2, xg, yg, plotref=True):
 
 def get_mesh(detector,aperref,subarr,coron_region='all'):
     nx, ny = (25, 25)
-    if subarr == 'FULL' or coron_region=='full':
+    if subarr == 'FULL' or coron_region=='full' or (detector in ['NRCA1','NRCA3']):
         x = np.linspace(1, aperref.XSciSize, nx)
         y = np.linspace(1, aperref.YSciSize, ny)
         x0 = aperref.XSciRef
