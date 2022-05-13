@@ -44,6 +44,7 @@ class test_distortions(pdastroclass):
         parser.add_argument('--outdir', default='same_as_distortionfiles', help='output directory. If "same_as_distortionfiles", then the cal/photometry images are saved in the same directory as the distortion coefficient files (default=%(default)s)')
         #parser.add_argument('--add2basename', default=None, help='This is added to the basename. (default=%(default)s)')
         parser.add_argument('--overwrite', default=False, action='store_true', help='overwrite files if they exist.')
+        parser.add_argument('--skip_rate2cal_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the new distortion terms, assuming this has already been done, but still do the photometry.')
 
         parser.add_argument('--ignore_filters', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of filter.')
         parser.add_argument('--ignore_pupils', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of pupil.')
@@ -184,7 +185,8 @@ class test_distortions(pdastroclass):
             
         return(ixs_matches,ixs_not_matches)
 
-    def run_images(self, ixs, outdir='same_as_distortionfiles', outsubdir=None):
+    def run_images(self, ixs, skip_rate2cal_if_exists=None, 
+                   outdir='same_as_distortionfiles', outsubdir=None):
         self.t.loc[ixs,'errorflag'] = None
         for ix in ixs:
             distfile = self.t.loc[ix,'distortion_match']
@@ -198,10 +200,10 @@ class test_distortions(pdastroclass):
             testdist_singleim.set_outdir(outdir)
 
             try:
-                testdist_singleim.run_all(ratefile,distfile)
-                self.t.loc[ix,'errorflag']=True
-            except:
+                testdist_singleim.run_all(ratefile,distfile,skip_rate2cal_if_exists=skip_rate2cal_if_exists)
                 self.t.loc[ix,'errorflag']=False
+            except:
+                self.t.loc[ix,'errorflag']=True
 
 if __name__ == '__main__':
 
@@ -224,5 +226,5 @@ if __name__ == '__main__':
         print('NO IMES FOUND!! exiting...')
         sys.exit(0)
 
-    testdist.run_images(ixs_matches,outdir=args.outdir)
+    testdist.run_images(ixs_matches,outdir=args.outdir,skip_rate2cal_if_exists=args.skip_rate2cal_if_exists,)
     testdist.write()
