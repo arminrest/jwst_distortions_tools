@@ -205,6 +205,28 @@ class test_distortion_singleim:
         # return True means that rate2cal did run
         return(True,tweakregfilename)
     
+    def apply_distortions(self,rate_image,
+                distortion_file,
+                overwrite = False,
+                skip_if_exists = False,
+                skip_rate2cal_if_exists = False,
+                ):
+        
+        (runflag,calimname) = self.run_rate2cal(rate_image,
+                    distortion_file,
+                    overwrite = overwrite, 
+                    skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
+        
+        if not runflag: 
+            if skip_if_exists:
+                print(f'{calimname} already exists, skipping since skip_if_exists=True')
+                return(0)
+            else:
+                raise RuntimeError(f'{calimname} already exists, stopping since skip_if_exists=False')
+            
+        return(0)
+
+
     def run_all(self,rate_image,
                 distortion_file,
                 overwrite = False,
@@ -223,10 +245,12 @@ class test_distortion_singleim:
                     overwrite = overwrite, 
                     skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
         
-        if not runflag and skip_if_exists:
-            print(f'{calimname} already exists, stopping since skip_if_exists=True')
-            sys.exit(0)
-            
+        if not runflag: 
+            if skip_if_exists:
+                print(f'{calimname} already exists, skipping since skip_if_exists=True')
+            else:
+                raise RuntimeError(f'{calimname} already exists, stopping since skip_if_exists=False')
+                        
         if runflag:
             self.calphot.verbose = self.verbose
             self.calphot.run_phot(calimname,gaia_catname_for_testing,SNR_min=align_gaia_SNR_min)
@@ -240,9 +264,11 @@ class test_distortion_singleim:
                     overwrite = overwrite, 
                     skip_if_exists = (skip_align2gaia_if_exists |  skip_if_exists))
     
-        if not runflag and skip_if_exists:
-            print(f'{tweakregfilename} already exists, stopping since skip_if_exists=True')
-            sys.exit(0)
+        if not runflag: 
+            if skip_if_exists:
+                print(f'{tweakregfilename} already exists, skipping since skip_if_exists=True')
+            else:
+                raise RuntimeError(f'{tweakregfilename} already exists, stopping since skip_if_exists=False')
     
         if runflag:
             self.gaialignphot.verbose = self.verbose
