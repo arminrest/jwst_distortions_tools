@@ -216,12 +216,14 @@ class test_distortion_singleim:
                     distortion_file,
                     overwrite = overwrite, 
                     skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
-        
+        print('####################',runflag,skip_if_exists)
         if not runflag: 
-            if skip_if_exists:
+            if (skip_rate2cal_if_exists |  skip_if_exists):
+                print('xXXXXXXX')
                 print(f'{calimname} already exists, skipping since skip_if_exists=True')
                 return(0)
             else:
+                print('YYYYYYYY')
                 raise RuntimeError(f'{calimname} already exists, stopping since skip_if_exists=False')
             
         return(0)
@@ -246,7 +248,7 @@ class test_distortion_singleim:
                     skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
         
         if not runflag: 
-            if skip_if_exists:
+            if (skip_rate2cal_if_exists |  skip_if_exists):
                 print(f'{calimname} already exists, skipping since skip_if_exists=True')
             else:
                 raise RuntimeError(f'{calimname} already exists, stopping since skip_if_exists=False')
@@ -265,7 +267,7 @@ class test_distortion_singleim:
                     skip_if_exists = (skip_align2gaia_if_exists |  skip_if_exists))
     
         if not runflag: 
-            if skip_if_exists:
+            if (skip_align2gaia_if_exists |  skip_if_exists):
                 print(f'{tweakregfilename} already exists, skipping since skip_if_exists=True')
             else:
                 raise RuntimeError(f'{tweakregfilename} already exists, stopping since skip_if_exists=False')

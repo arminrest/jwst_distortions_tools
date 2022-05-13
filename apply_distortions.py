@@ -202,9 +202,9 @@ class apply_distortions(pdastroclass):
 
             try:
                 applydist_singleim.apply_distortions(ratefile,distfile,skip_rate2cal_if_exists=skip_rate2cal_if_exists)
-                self.t.loc[ix,'errorflag']=True
-            except:
                 self.t.loc[ix,'errorflag']=False
+            except:
+                self.t.loc[ix,'errorflag']=True
 
 if __name__ == '__main__':
 
