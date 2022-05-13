@@ -41,7 +41,7 @@ import pysiaf
 import argparse,glob,re,sys,os
 
 # pdastroclass is wrapper around pandas.
-from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB
+from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB,rmfile
 import pandas as pd
 from pandas.core.dtypes.common import is_string_dtype
 
@@ -336,6 +336,7 @@ class coeffs2asdf(pdastroclass):
                 
     def create_asdf_reference_for_distortion(self,
                                  aperture=None, aperture_col=None,
+                                 filt=None,
                                  degree=None,
                                  exponent_col='exponent_x',
                                  siaf_xml_file=None,
@@ -635,14 +636,19 @@ class coeffs2asdf(pdastroclass):
             d.meta.useafter = useafter
     
         # To be ready for the future where we will have filter-dependent solutions
-        d.meta.instrument.filter = 'N/A'
+        if filt is None:
+            d.meta.instrument.filter = 'N/A'
+        else:
+            d.meta.instrument.filter = filt.upper()
     
         # Create initial HISTORY ENTRY
         sdict = {'name': 'distortion2asdf.py',
                  'author': author,
                  'homepage': 'https://github.com/spacetelescope/nircam_calib',
-                 'version': '0.1'}
-    
+                 'version': '1.0'}
+        
+        print('meta data: ',d.meta.instance)
+         
         entry = util.create_history_entry(history_entry, software=sdict)
         d.history = [entry]
     
@@ -654,16 +660,25 @@ class coeffs2asdf(pdastroclass):
         return(d)
     
     
-    def coefffile2adfs(self, filename, outname=None):
+    def coefffile2adfs(self, filename, filt=None, outname=None, savemeta=True):
         # load the file
         self.load_coeff_file(filename)
 
-        distcoeff = self.create_asdf_reference_for_distortion()
+        distcoeff = self.create_asdf_reference_for_distortion(filt=filt)
 
         if outname is not None:
             distcoeff.save(outname)
             print(f'Distortion coefficients saved to {outname}')
-        
+            if savemeta:
+                metaoutname = re.sub('\.txt$','',outname)
+                metaoutname +='.meta.txt'
+                rmfile(metaoutname)
+                print(distcoeff.meta.instance)
+                s = '\n'.join([f'{k}:{distcoeff.meta.instance[k]}' for k in distcoeff.meta.instance])
+                print(s)
+                open(metaoutname,'w').writelines(s)
+                print(f'Distortion coefficients meta data saved to {metaoutname}')
+            #    open()
         return(distcoeff)
 
         

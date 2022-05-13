@@ -563,6 +563,7 @@ class jwst_photclass(pdastroclass):
 
         gaiacat = pdastroclass()
         gaiacat.load_spacesep(gaia_catname)
+        gaiacat.t['ID']=gaiacat.getindices()
 
         # make sure there are no NaNs        
         ixs_obj = self.ix_not_null(['ra','dec'],indices=indices)
@@ -604,12 +605,12 @@ class jwst_photclass(pdastroclass):
         # for each object in ixs_obj, it contains the index to the gaiacat entry
         ixs_cat4obj = ixs_cat[idx]
 
-        for cat_col in ['ra','dec','x','y','x_idl','y_idl']:
+        for cat_col in ['ra','dec','x','y','x_idl','y_idl','ID']:
             obj_col = f'cat_{cat_col}'
             vals = list(gaiacat.t.loc[ixs_cat4obj,cat_col])
             self.t.loc[ixs_obj,obj_col]=vals
         self.t.loc[ixs_obj,'gaia_mag']=list(gaiacat.t.loc[ixs_cat4obj,'gaia_mag'])
-        self.t.loc[ixs_obj,'cat_index']=ixs_cat4obj
+#        self.t.loc[ixs_obj,'cat_index']=ixs_cat4obj
         self.t.loc[ixs_obj,'d2d']=d2d.arcsec
     
         #self.t.loc[ixs_obj,'dx_idl']=self.t.loc[ixs_obj,'cat_x_idl'] - self.t.loc[ixs_obj,'x_idl']

@@ -181,7 +181,7 @@ def plot_distortion_diffs(coeffref,coefflist, coron_region='all', output_plot_na
     #plt.rcParams['xtick.labelsize'] = plt.rcParams['ytick.labelsize'] = 20
 
     coeffref.get_instrument_info()
-    print(f'Instrument: {coeffref.instrument} Aperture:{coeffref.aperture} subarray:{coeffref.subarr}')
+    print(f'Instrument: {coeffref.instrument} Detector:{coeffref.detector} Aperture:{coeffref.aperture} subarray:{coeffref.subarr}')
     siafref = pysiaf.Siaf(coeffref.instrument)
     aperref = siafref[coeffref.aperture]
     
@@ -251,6 +251,7 @@ def define_options(parser=None,usage=None,conflict_handler='resolve'):
 
     parser.add_argument('-v','--verbose', default=0, action='count')
     parser.add_argument('-p','--showplot', action='store_true', default=False, help='show the residual plot (default=%(default)s)')
+    parser.add_argument('-p','--save_vec_max', action='store_true', default=False, help='save the vec max in a file, basename from --save_plot but with vecmax.txt suffix (default=%(default)s)')
     parser.add_argument('-s','--saveplot', default=None, help='Save the plot in the given filename')
 
     return(parser)

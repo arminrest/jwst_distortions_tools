@@ -6,7 +6,7 @@ Created on Wed Apr 13 10:35:28 2022
 @author: arest
 """
 import re,os,sys
-import argparse,glob
+import argparse,glob,copy
 
 # pdastroclass is wrapper around pandas.
 from pdastro import pdastroclass,pdastrostatsclass,makepath4file,unique
@@ -14,6 +14,8 @@ import pandas as pd
 from pandas.core.dtypes.common import is_string_dtype
 from distortion2asdf import coeffs2asdf
 from plot_distortion_diffs import plot_distortionfiles_diffs
+import pysiaf
+import numpy as np
 
 class combine_coeffs(pdastrostatsclass):
     def __init__(self):
@@ -28,7 +30,9 @@ class combine_coeffs(pdastrostatsclass):
         
         self.format_coeff = '{:.10e}'
         
-        self.results = pdastroclass()
+        self.results = coeffs2asdf()
+        
+        self.overview = pdastroclass()
 
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
         if parser is None:
@@ -57,6 +61,8 @@ class combine_coeffs(pdastrostatsclass):
 
         parser.add_argument('--ignore_filters', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of filter.')
         parser.add_argument('--ignore_pupils', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of pupil.')
+
+        parser.add_argument('--vecmax_limits_mas', nargs='+', type=float, help='The cuts on vec_max are applied in order')
 
         parser.add_argument('--showplot', default=False, action='store_true', help='show the difference of the input coefficients with respect to the combined distortion file')
         parser.add_argument('--saveplot', default=False, action='store_true', help='save the difference of the input coefficients with respect to the combined distortion file as pdf file')
@@ -161,15 +167,95 @@ class combine_coeffs(pdastrostatsclass):
             if col in self.t.columns:
                 self.t[col]=self.t[col].astype('int')
 
+    def get_mesh(self,detector,aperref,subarr,nx=25,ny=25,coron_region='all'):
+        x0 = aperref.XSciRef
+        y0 = aperref.YSciRef
+        if subarr == 'FULL' or coron_region=='full' or (detector in ['NRCA1','NRCA3']):
+            x = np.linspace(1, aperref.XSciSize, nx)
+            y = np.linspace(1, aperref.YSciSize, ny)
+        elif detector=='NRCA5':
+            print(f'coron_region={coron_region}')
+            x = np.linspace(171, 1800, nx)
+            if coron_region=='all':
+                y = np.linspace(1, 1820, ny)
+            elif coron_region=='top':
+                y = np.linspace(1470, 1820, ny)
+            elif coron_region=='topcore':
+                x = np.linspace(300, 1650, nx)
+                y = np.linspace(1520, 1750, ny)
+            elif coron_region=='bottom':
+                y = np.linspace(1, 1470, ny)
+        elif detector=='NRCA2':
+            print(f'coron_region={coron_region}')
+            x = np.linspace(401, 2048, nx)
+            if coron_region=='all':
+                y = np.linspace(1, 1800, ny)
+            elif coron_region=='top':
+                y = np.linspace(1151, 1800, ny)
+            elif coron_region=='topcore':
+                x = np.linspace(500, 1900, nx)
+                y = np.linspace(1250, 1700, ny)
+            elif coron_region=='bottom':
+                y = np.linspace(1, 1150, ny)
+            else:
+                raise RuntimeError(f'coron_region={coron_region} not known!')
+        elif detector=='NRCA4':
+            print(f'coron_region={coron_region}')
+            x = np.linspace(1, 1500, nx)
+            if coron_region=='all':
+                y = np.linspace(1, 1700, ny)
+            elif coron_region=='top':
+                y = np.linspace(1151, 1800, ny)
+            elif coron_region=='topcore':
+                x = np.linspace(100, 1400, nx)
+                y = np.linspace(1250, 1700, ny)
+            elif coron_region=='bottom':
+                y = np.linspace(1, 1150, ny)
+            else:
+                raise RuntimeError(f'coron_region={coron_region} not known!')
+        else:
+            raise RuntimeError(f'subarr={subarr} and/or detector {detector} not known!')
+        xg, yg = np.meshgrid(x-x0, y-y0)
+        return(xg,yg)
+
+
+    def distortion_diffs_vecmax(self, coeffref, t2, coron_region='all'):
+        
+        print(f'TESTTTTTT: {coeffref.instrument} {coeffref.aperture} {coeffref.detector} {coeffref.subarr}') 
+        #print('t2:',t2)
+        #print('t2Sci:',t2['Sci2IdlX'])
+        #sys.exit(0)
+        siafref = pysiaf.Siaf(coeffref.instrument)
+        aperref = siafref[coeffref.aperture]
+        (xg,yg) = self.get_mesh(coeffref.detector, aperref,coeffref.subarr,coron_region=coron_region)
+        
+        
+        number_of_coefficients = len(coeffref.t['Sci2IdlX'])
+        poly_degree = pysiaf.utils.polynomial.polynomial_degree(number_of_coefficients)
+    
+    
+        xg_idl1 = pysiaf.utils.polynomial.poly(list(coeffref.t['Sci2IdlX']), xg, yg, order=poly_degree)
+        yg_idl1 = pysiaf.utils.polynomial.poly(list(coeffref.t['Sci2IdlY']), xg, yg, order=poly_degree)
+        xg_idl2 = pysiaf.utils.polynomial.poly(list(t2['Sci2IdlX']), xg, yg, order=poly_degree)
+        yg_idl2 = pysiaf.utils.polynomial.poly(list(t2['Sci2IdlY']), xg, yg, order=poly_degree)
+        
+        dx = xg_idl2 - xg_idl1
+        dy = yg_idl2 - yg_idl1
+    
+        vec = np.sqrt(dx**2+dy**2)
+        vec_max = np.max(vec)
+        
+        return(vec_max,dx,dy)
         
     def calc_average_coefficients(self, aperture, indices=None, filt=None, pupil=None,
                                   saveflag=False,outbasename='test',overwrite=False,
-                                  showplot=False,saveplot=False):
-        print(f'\n######################################################\n### Determining coefficients for {aperture}, filter={filt}, pupil={pupil}\n######################################################')
+                                  showplot=False,saveplot=False,coron_region='all'):
 
 
         # if None, use all indices
         indices=self.getindices(indices=indices)
+
+        print(f'\n######################################################\n### Determining coefficients for {aperture}, filter={filt}, pupil={pupil}: {len(indices)} input files\n######################################################')
 
         siaf_indexs = unique(self.t.loc[indices,self.siaf_index_col])
         siaf_indexs.sort()
@@ -183,6 +269,9 @@ class combine_coeffs(pdastrostatsclass):
         
         ixs_result = []
         ixs_input = []
+        
+        self.results = coeffs2asdf()
+        
         resultsstats = pdastrostatsclass()
         resultsstats.param2columnmapping = resultsstats.intializecols4statparams(format4outvals=self.format_coeff)
 
@@ -229,6 +318,45 @@ class combine_coeffs(pdastrostatsclass):
         if self.verbose:
             resultsstats.write()
             
+        #### Calculate vec_max!!!
+        self.vecmax = pdastroclass()
+        self.results.get_instrument_info()
+        
+        # This is the slower, but cleaner way
+        #for inputfilename in inputfilenames:
+            #continue
+        #    ixs_file = self.ix_equal('filename',inputfilename,indices=indices)
+        #    (vec_max,dx,dy) = self.distortion_diffs_vecmax_(self.results, self.t.loc[ixs_file])
+
+        siafref = pysiaf.Siaf(self.results.instrument)
+        aperref = siafref[self.results.aperture]
+        (xg,yg) = self.get_mesh(self.results.detector, aperref,self.results.subarr,coron_region=coron_region)
+        number_of_coefficients = len(self.results.t['Sci2IdlX'])
+        poly_degree = pysiaf.utils.polynomial.polynomial_degree(number_of_coefficients)
+        xg_idl1 = pysiaf.utils.polynomial.poly(list(self.results.t['Sci2IdlX']), xg, yg, order=poly_degree)
+        yg_idl1 = pysiaf.utils.polynomial.poly(list(self.results.t['Sci2IdlY']), xg, yg, order=poly_degree)
+
+        for inputfilename in inputfilenames:
+            ixs_file = self.ix_equal('filename',inputfilename,indices=indices)
+            xg_idl2 = pysiaf.utils.polynomial.poly(list(self.t.loc[ixs_file,'Sci2IdlX']), xg, yg, order=poly_degree)
+            yg_idl2 = pysiaf.utils.polynomial.poly(list(self.t.loc[ixs_file,'Sci2IdlY']), xg, yg, order=poly_degree)
+
+            dx = xg_idl2 - xg_idl1
+            dy = yg_idl2 - yg_idl1
+        
+            vec = np.sqrt(dx**2+dy**2)
+            vec_max = np.max(vec)
+            
+            self.vecmax.newrow({self.aperture_col:self.results.aperture,
+                                'filter':filt,
+                                'pupil':pupil,
+                                'vec_max_mas':vec_max*1000.0,
+                                'filename':inputfilename,
+                                'outbasename':outbasename
+                                })
+
+        self.vecmax.write()
+        
         if saveflag:
             if not overwrite:
                 if os.path.exists(f'{outbasename}.distcoeff.txt') or os.path.exists(f'{outbasename}.distcoeff.asdf'):
@@ -242,19 +370,21 @@ class combine_coeffs(pdastrostatsclass):
             makepath4file(outbasename)
             print(f'##### Saving coefficients for {outbasename}')
             print(f'Saving {outbasename}.distcoeff.txt')
-            self.results.write(outbasename+'.distcoeff.txt',indices=ixs_result,formatters=formatters)
+            self.results.write(outbasename+'.distcoeff.txt',indices=ixs_result,formatters=formatters)            
 
-            
-
-            coeffs = coeffs2asdf()
+            #coeffs = coeffs2asdf()
             print(f'Saving {outbasename}.distcoeff.asdf')
-            coeffs.coefffile2adfs(outbasename+'.distcoeff.txt',outname=f'{outbasename}.distcoeff.asdf')
+            #coeffs.coefffile2adfs(outbasename+'.distcoeff.txt', filt=filt, outname=f'{outbasename}.distcoeff.asdf')
+            self.results.coefffile2adfs(outbasename+'.distcoeff.txt', filt=filt, outname=f'{outbasename}.distcoeff.asdf')
 
             print(f'Saving {outbasename}.singlefile.txt')
             self.write(outbasename+'.singlefile.txt',indices=ixs_input,formatters=formatters)
 
             print(f'Saving {outbasename}.statsinfo.txt')
             resultsstats.write(outbasename+'.statsinfo.txt',formatters=formatters)
+
+            print(f'Saving {outbasename}.vec_max.txt')
+            self.vecmax.write(outbasename+'.vec_max.txt')
 
             if showplot or saveplot:
                 if saveplot:
@@ -263,6 +393,7 @@ class combine_coeffs(pdastrostatsclass):
                     plotfilename = None
                 plot_distortionfiles_diffs(f'{outbasename}.distcoeff.txt',inputfilenames,
                                            coron_region=args.coron_region,
+                                           #save_vec_max= args.save_vec_max,
                                            showplot=showplot,output_plot_name=plotfilename)        
 
 
@@ -297,9 +428,55 @@ class combine_coeffs(pdastrostatsclass):
        
         return(outname)
         
+    def calc_average_coefficients_vecmax_cut(self, aperture, vecmax_limits_mas=None, 
+                                             indices=None, filt=None, pupil=None,
+                                             **kwargs):
+
+        print(f'\n######################################################\n### Determining coefficients for {aperture}, filter={filt}, pupil={pupil}\n######################################################')
+
+
+        # if None, use all indices
+        indices=self.getindices(indices=indices)
+        counter=1
+        
+        kwargs0 = copy.deepcopy(kwargs)
+        kwargs0['saveplot']=False
+        kwargs0['showplot']=False
+        kwargs0['saveflag']=False
+        self.calc_average_coefficients(aperture,indices=indices, filt=filt, pupil=pupil, **kwargs0)
+        if vecmax_limits_mas is None or (vecmax_limits_mas==[]):
+            return(0)
+        
+        for counter,vecmax_limit in enumerate(vecmax_limits_mas):
+            
+            ixs_vecmax_cut = self.vecmax.ix_inrange('vec_max_mas',None,vecmax_limit)
+            print(f'!!!!!!!!!!!!!!!!!!!!!!!! ### vec_max cut: keeping {len(ixs_vecmax_cut)} out of {len(self.vecmax.getindices())} with vec_max<={vecmax_limit}mas')
+            ixs_keep = []
+            for ix_vecmax in ixs_vecmax_cut:
+                filename = self.vecmax.t.loc[ix_vecmax,'filename']
+                ixs_keep.extend(self.ix_equal('filename',filename,indices=indices))
+            
+            if counter==len(vecmax_limits_mas)-1:
+                self.calc_average_coefficients(aperture,indices=ixs_keep, filt=filt, pupil=pupil, **kwargs)
+                self.vecmax.write()
+                Nin = len(unique(self.t.loc[indices,'filename']))
+                Ngood = len(unique(self.t.loc[ixs_keep,'filename']))
+                self.overview.newrow({self.aperture_col:self.results.aperture,
+                                      'filter':filt,
+                                      'pupil':pupil,
+                                      'Nin':Nin,
+                                      'Ngood':Ngood,
+                                      'Ncut':Nin-Ngood,
+                                      'median_vec_max_mas':np.median(self.vecmax.t['vec_max_mas'])
+                                      })
+            else:
+                self.calc_average_coefficients(aperture,indices=ixs_keep, filt=filt, pupil=pupil, **kwargs0)
+                
+
  
 
-    def calc_average_coefficients_all(self, indices=None, apertures=None, 
+    def calc_average_coefficients_all(self,  vecmax_limits_mas=None, 
+                                      indices=None, apertures=None, 
                                       require_filter=True, require_pupil=True,
                                       saveflag=True, overwrite=False,
                                       outrootdir=None,outsubdir=None,add2basename=None,
@@ -337,7 +514,9 @@ class combine_coeffs(pdastrostatsclass):
                             #print(f'Determining average coeff values for aperture {aperture}, filter {filt}, pupil {pupil}')
                             ixs2use_pupil = self.ix_equal('pupil', pupil, indices=ixs2use_filt)
                             outbasename = self.get_outbasename(outdir,aperture,filt=filt,pupil=pupil,add2basename=add2basename)
-                            self.calc_average_coefficients(aperture,indices=ixs2use_pupil, 
+                            self.calc_average_coefficients_vecmax_cut(aperture,
+                                                           vecmax_limits_mas=vecmax_limits_mas,
+                                                           indices=ixs2use_pupil, 
                                                            filt=filt, pupil=pupil,
                                                            saveflag=saveflag,outbasename=outbasename,
                                                            overwrite=overwrite,
@@ -345,7 +524,9 @@ class combine_coeffs(pdastrostatsclass):
                     else:
                         pupil=None
                         outbasename = self.get_outbasename(outdir,aperture,filt=filt,pupil=pupil,add2basename=add2basename)
-                        self.calc_average_coefficients(aperture,indices=ixs2use_filt, 
+                        self.calc_average_coefficients_vecmax_cut(aperture,
+                                                       vecmax_limits_mas=vecmax_limits_mas,
+                                                       indices=ixs2use_filt, 
                                                        filt=filt, pupil=pupil,
                                                        saveflag=saveflag,outbasename=outbasename,
                                                        overwrite=overwrite,
@@ -355,7 +536,9 @@ class combine_coeffs(pdastrostatsclass):
             else:
                 filt=pupil=None
                 outbasename = self.get_outbasename(outdir,aperture,filt=filt,pupil=pupil,add2basename=add2basename)
-                self.calc_average_coefficients(aperture,indices=ixs2use, 
+                self.calc_average_coefficients_vecmax_cut(aperture,
+                                               vecmax_limits_mas=vecmax_limits_mas,
+                                               indices=ixs2use, 
                                                filt=filt, pupil=pupil,
                                                saveflag=saveflag,outbasename=outbasename,
                                                overwrite=overwrite,
@@ -365,7 +548,8 @@ class combine_coeffs(pdastrostatsclass):
             if col in self.results.t.columns:
                 self.results.t[col]=self.results.t[col].astype('int')
 
-        self.results.write()
+        self.overview.write()
+            
 
 if __name__ == '__main__':
 
@@ -383,6 +567,7 @@ if __name__ == '__main__':
     coeffs.calc_average_coefficients_all(apertures=args.apertures, 
                                          require_filter = not args.ignore_filters,
                                          require_pupil = not args.ignore_pupils,
+                                         vecmax_limits_mas = args.vecmax_limits_mas,
                                          saveflag = args.save_coefficients,
                                          overwrite = args.overwrite,
                                          outrootdir = args.outrootdir, 
