@@ -84,6 +84,25 @@ class coeffs2asdf(pdastroclass):
         self.metadata['imaging_pupil']['FULL_WEDGE_BAR']=['MASKBAR']
         #self.metadata['imaging_pupil']['']=['MASKBAR']
 
+        self.filters_with_distortions = ['F070W','F150W','F200W','F277W','F356W','F444W','F210M','F335M']
+        self.metadata['imaging_filter']={}
+        #NIRCam mapping
+        self.metadata['imaging_filter']['NIRCAM']={}
+        self.metadata['imaging_filter']['NIRCAM']['F210M']=['F182M','F187N','F210M','F212N']
+        self.metadata['imaging_filter']['NIRCAM']['F070W']=['F070W','F090W']
+        #self.metadata['imaging_filter']['NIRCAM']['F150W']=['F150W','F115W','F140M','F162M','F164N','F150W2']
+        self.metadata['imaging_filter']['NIRCAM']['F150W']=['F150W','F115W','F140M','F150W2']
+        self.metadata['imaging_filter']['NIRCAM']['F200W']=['F200W']
+        self.metadata['imaging_filter']['NIRCAM']['F277W']=['F250M','F277W','F300M']
+        self.metadata['imaging_filter']['NIRCAM']['F356W']=['F322W2','F356W','F360M']
+        self.metadata['imaging_filter']['NIRCAM']['F444W']=['F405N','F410M','F430M','F444W','F460M','F466N','F470N','F480M']
+        self.metadata['imaging_filter']['NIRCAM']['F335M']=['F335M']
+        # This applies for images with MASKs in the pupil
+        self.metadata['imaging_filter']['NIRCAMMASK']={}
+        self.metadata['imaging_filter']['NIRCAMMASK']['F210M']=['F200W','F182M','F187N','F210M','F212N']
+        self.metadata['imaging_filter']['NIRCAMMASK']['F335M']=['F250M','F300M','F322W2','F356W','F360M','F335M','F405N','F410M','F430M','F444W','F460M','F466N','F470N','F480M']
+
+
         # EXPTYPE metadata-----------------------------------------------
         self.metadata['exptype']={}
         self.metadata['exptype']['NRC_SW']=['NRC_IMAGE', 'NRC_TSIMAGE', 'NRC_FLAT', 'NRC_LED',
@@ -196,7 +215,7 @@ class coeffs2asdf(pdastroclass):
         
         firstline = open(filename,'r').readline()
         if re.search('^\#',firstline):
-            print('jwst_distortion.py format!')
+            #print('jwst_distortion.py format!')
             self.load(filename,sep=',',skipinitialspace=True,comment='#',delim_whitespace=False)
 
             # some of the column names have spaces, removed them!!
@@ -208,7 +227,7 @@ class coeffs2asdf(pdastroclass):
                     self.t[col] = self.t[col].str.strip()
             self.t = self.t.rename(columns=mapper)
         elif re.search('^\s*AperName\s+siaf_index',firstline):
-            print('pandas table format!')
+            #print('pandas table format!')
             self.load(filename)
         else:
             raise RuntimeError(f'Something is wrong, cannot understand input file {filename} format')
@@ -340,6 +359,7 @@ class coeffs2asdf(pdastroclass):
                                  degree=None,
                                  exponent_col='exponent_x',
                                  siaf_xml_file=None,
+                                 sci_filter=None,
                                  sci_pupil=None, sci_subarr=None, sci_exptype=None, 
                                  history_entry=hist,
                                  author=None, descrip=None, pedigree=None,
@@ -380,6 +400,14 @@ class coeffs2asdf(pdastroclass):
             Name of SIAF xml file to use in place of the default SIAF version from pysiaf.
             If None, the default version in pysiaf will be used.
     
+        sci_filter : list
+            filter wheel values for which this distortion solution applies
+            If None:
+                if pupil is clear, then the mapping in self.metadata['imaging_filter']['NIRCAM'][filter]
+                is used
+                if pupil is a mask, then the mapping in self.metadata['imaging_filter']['NIRCAMMASK'][filter]
+                is used
+                
         sci_pupil : list
             Pupil wheel values for which this distortion solution applies
             If None, self.metadata['imaging_pupil'][self.camera] will be used.
@@ -420,6 +448,24 @@ class coeffs2asdf(pdastroclass):
         # if aperture is None, then the string in aperture_col in self.t is used.
         self.get_instrument_info(aperture=aperture,aperture_col=aperture_col)
         
+        
+        # if filter_pupil is None, check if the filter is in self.metadata['imaging_filter']['NIRCAM']
+        # or self.metadata['imaging_filter']['NIRCAMMASK'] for corongraphy
+        if self.instrument=='NIRISS':
+            # NIRISS doesn't have a mapping yet
+            pass
+        elif self.instrument=='NIRCAM':
+            if sci_filter is None:
+                if self.subarr in ['FULL_WEDGE_RND','FULL_WEDGE_BAR']:
+                    if filt.upper() in self.metadata['imaging_filter']['NIRCAMMASK']:
+                        sci_filter = self.metadata['imaging_filter']['NIRCAMMASK'][filt.upper()]
+                else:
+                    if filt.upper() in self.metadata['imaging_filter']['NIRCAM']:
+                        sci_filter = self.metadata['imaging_filter']['NIRCAM'][filt.upper()]
+        else:
+            raise RuntimeError(f'instrument {self.instrument} not supported yet')
+         
+        
         # if sci_pupil is None, use the default defined in self.metadata['imaging_pupil']
         # for the given self.camera. self.camera gets defined in self.get_instrument_info
         if self.instrument=='NIRISS':
@@ -434,7 +480,7 @@ class coeffs2asdf(pdastroclass):
                 else:
                     raise RuntimeError('not able to determine sci_pupil')
         else:
-            raise RuntimeError(f'camera {self.camera} not in {self.metadata["imaging_pupil"]}')
+            raise RuntimeError(f'instrument {self.instrument} not supported yet')
 
         # if sci_exptype is None, use the default defined in self.metadata['exptype']
         # for the given self.camera. self.camera gets defined in self.get_instrument_info
@@ -571,12 +617,18 @@ class coeffs2asdf(pdastroclass):
         # Keyword values in science data to which this file should
         # be applied
         
+        if sci_filter is not None:
+            p_filter = ''
+            for p in sci_filter:
+                p_filter = p_filter + p + '|'
+            d.meta.instrument.p_filter = p_filter
+            
         if sci_pupil is not None:
             p_pupil = ''
             for p in sci_pupil:
                 p_pupil = p_pupil + p + '|'
             d.meta.instrument.p_pupil = p_pupil
-            
+        
     
         if sci_subarr is not None:
             p_subarr = ''
@@ -647,7 +699,7 @@ class coeffs2asdf(pdastroclass):
                  'homepage': 'https://github.com/spacetelescope/nircam_calib',
                  'version': '1.0'}
         
-        print('meta data: ',d.meta.instance)
+        #print('meta data: ',d.meta.instance)
          
         entry = util.create_history_entry(history_entry, software=sdict)
         d.history = [entry]
@@ -670,10 +722,10 @@ class coeffs2asdf(pdastroclass):
             distcoeff.save(outname)
             print(f'Distortion coefficients saved to {outname}')
             if savemeta:
-                metaoutname = re.sub('\.txt$','',outname)
+                metaoutname = re.sub('\.asdf$','',outname)
                 metaoutname +='.meta.txt'
                 rmfile(metaoutname)
-                print(distcoeff.meta.instance)
+                print('meta data: \n',distcoeff.meta.instance)
                 s = '\n'.join([f'{k}:{distcoeff.meta.instance[k]}' for k in distcoeff.meta.instance])
                 print(s)
                 open(metaoutname,'w').writelines(s)

@@ -67,6 +67,10 @@ class combine_coeffs(pdastrostatsclass):
         parser.add_argument('--showplot', default=False, action='store_true', help='show the difference of the input coefficients with respect to the combined distortion file')
         parser.add_argument('--saveplot', default=False, action='store_true', help='save the difference of the input coefficients with respect to the combined distortion file as pdf file')
         parser.add_argument('--coron_region', type=str, default='all', choices=['top','topcore','bottom','all','full'], help='for coronography: specify the region of interest to be plotted (default=%(default)s)')
+
+        parser.add_argument('--save_overview', default=None, help='Save the overview table (default=%(default)s)')
+
+
         return(parser)
     
     def load_coeff_files(self,coeff_filepatterns,
@@ -440,9 +444,10 @@ class combine_coeffs(pdastrostatsclass):
         counter=1
         
         kwargs0 = copy.deepcopy(kwargs)
-        kwargs0['saveplot']=False
-        kwargs0['showplot']=False
-        kwargs0['saveflag']=False
+        if vecmax_limits_mas is not None:
+            kwargs0['saveplot']=False
+            kwargs0['showplot']=False
+            kwargs0['saveflag']=False
         self.calc_average_coefficients(aperture,indices=indices, filt=filt, pupil=pupil, **kwargs0)
         if vecmax_limits_mas is None or (vecmax_limits_mas==[]):
             return(0)
@@ -457,6 +462,7 @@ class combine_coeffs(pdastrostatsclass):
                 ixs_keep.extend(self.ix_equal('filename',filename,indices=indices))
             
             if counter==len(vecmax_limits_mas)-1:
+                # final calculation! save the results, plots etc
                 self.calc_average_coefficients(aperture,indices=ixs_keep, filt=filt, pupil=pupil, **kwargs)
                 self.vecmax.write()
                 Nin = len(unique(self.t.loc[indices,'filename']))
@@ -480,7 +486,8 @@ class combine_coeffs(pdastrostatsclass):
                                       require_filter=True, require_pupil=True,
                                       saveflag=True, overwrite=False,
                                       outrootdir=None,outsubdir=None,add2basename=None,
-                                      showplot=False,saveplot=False
+                                      showplot=False,saveplot=False,
+                                      save_overview=None
                                       ):
         # if None, use all indices
         indices=self.getindices(indices=indices)
@@ -548,7 +555,13 @@ class combine_coeffs(pdastrostatsclass):
             if col in self.results.t.columns:
                 self.results.t[col]=self.results.t[col].astype('int')
 
+        print('HELLO',showplot)
         self.overview.write()
+        if save_overview is not None:
+            overview_filename=f'{outdir}/{os.path.basename(save_overview)}'
+            print(f'Saving overview to {overview_filename}')
+            self.overview.write(overview_filename)
+           
             
 
 if __name__ == '__main__':
@@ -574,7 +587,8 @@ if __name__ == '__main__':
                                          outsubdir = args.outsubdir,
                                          add2basename = args.add2basename,
                                          showplot=args.showplot,
-                                         saveplot=args.saveplot
+                                         saveplot=args.saveplot,
+                                         save_overview=args.save_overview
                                          )
     
 #    if args.save_coefficients:
