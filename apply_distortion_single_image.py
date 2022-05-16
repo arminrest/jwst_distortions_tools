@@ -6,14 +6,11 @@ Created on Mon May 16 10:50:49 2022
 @author: arest
 """
 
-import argparse,glob,re,sys,os
+from jwst.pipeline.calwebb_image2 import Image2Pipeline
+import argparse,re,sys,os
 from pdastro import makepath,rmfile
-import pandas as pd
-from astropy.io import fits
-import numpy as np
-from test_distortions_single_image import test_distortion_singleim
 
-class apply_distortion_to_image:
+class apply_distortion_single_image:
     def __init__(self):
         self.verbose=0
         self.outdir = None
@@ -22,16 +19,19 @@ class apply_distortion_to_image:
         if parser is None:
             parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 
-        parser.add_argument('rate_file', help='of rate file to which the distortion file is applied to. "rate_dir" is used as root directory if not None')
-        parser.add_argument('distortion_file', help='distortion file to be applied.')
+        parser.add_argument('rate_image',  help='rate fits file. If --rate_dir AND rate filename has not a directory, image is looked for in this directory')
+        parser.add_argument('distortion_file',  help='distortion file, in asdf format')
 
-    def default_options(self,parser=None,usage=None,conflict_handler='resolve'):
+        parser = self.default_options(parser)
+        return(parser)
+
+    def default_options(self,parser):
 
         # default directory for input images
-        if 'JWST_DISTORTION_IMAGEDIR' in os.environ:
-            ratedir = os.environ['JWST_DISTORTION_IMAGEDIR']
-        else:
-            ratedir = None
+        #if 'JWST_DISTORTION_IMAGEDIR' in os.environ:
+        #    ratedir = os.environ['JWST_DISTORTION_IMAGEDIR']
+        #else:
+        #    ratedir = None
 
         # default directory for output
         if 'JWST_DISTORTION_OUTROOTDIR' in os.environ:
@@ -39,9 +39,7 @@ class apply_distortion_to_image:
         else:
             outrootdir = None
 
-
-
-        parser.add_argument('--rate_dir', default=ratedir, help='Directory in which the rate images are located, which will be used to test the distortions. (default=%(default)s)')
+        #parser.add_argument('--rate_dir', default=ratedir, help='Directory in which the rate images are located, which will be used to test the distortions. (default=%(default)s)')
 
         parser.add_argument('--outrootdir', default=outrootdir, help='Directory in which the cal images are located, which will be used to test the distortions. (default=%(default)s)')
         parser.add_argument('--outsubdir', default=None, help='outsubdir added to output root directory (default=%(default)s)')
@@ -151,25 +149,15 @@ class apply_distortion_to_image:
 
 if __name__ == '__main__':
 
-    applydist = apply_distortions()
+    applydist = apply_distortion_single_image()
     parser = applydist.define_options()
     args = parser.parse_args()
     
     applydist.verbose=args.verbose
     
-    applydist.get_rate_files(args.rate_files,directory=args.rate_dir)
-    applydist.get_distortion_files(args.distortion_files,directory=None)
+    applydist.set_outdir(args.outrootdir, args.outsubdir)
     
-    ixs_matches,ixs_not_matches = applydist.match_distortion4ratefile(require_filter=not args.ignore_filters, 
-                                                                     require_pupil=not args.ignore_pupils,
-                                                                     apertures=args.apertures, 
-                                                                     filts=args.filters, 
-                                                                     pupils=args.pupils)
-    
-    if len(ixs_matches)==0:
-        print('NO IMES FOUND!! exiting...')
-        sys.exit(0)
-
-    applydist.apply_distortions(ixs_matches,outdir=args.outdir,
-                               skip_rate2cal_if_exists=args.skip_rate2cal_if_exists)
-    applydist.write()
+    applydist.run_rate2cal(args.rate_image,
+                           args.distortion_file,
+                           overwrite = args.overwrite,
+                           skip_if_exists = args.skip_if_exists)
