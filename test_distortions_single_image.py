@@ -7,8 +7,8 @@ Created on Thu Apr 21 14:32:42 2022
 """
 
 from jwst.pipeline.calwebb_image2 import Image2Pipeline
-import glob,argparse,os,re,sys
-from pdastro import pdastroclass,makepath4file,makepath,unique,AnotB,AorB,AandB,rmfile
+import argparse,os,re
+from pdastro import makepath,rmfile
 from simple_jwst_phot import jwst_photclass
 from jwst.tweakreg import TweakRegStep
 from jwst import datamodels
@@ -29,7 +29,7 @@ class test_distortion_singleim:
             outrootdir = None
 
 
-        parser.add_argument('rate_image',  help='rate fits file')
+        parser.add_argument('rate_image',  help='rate fits file. If --rate_dir AND rate filename has not a directory, image is looked for in this directory')
         parser.add_argument('distortion_file',  help='distortion file, in asdf format')
 
         parser.add_argument('--gaia_catname_for_testing', default='./LMC_gaia_DR3.nrcposs', help='Gaia catalog used for TESTING, not for tweakreg! (default=%(default)s)')
