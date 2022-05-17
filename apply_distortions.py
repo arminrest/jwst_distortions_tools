@@ -117,16 +117,19 @@ class apply_distortions(pdastroclass):
             self.distortionfiles.t.loc[ix,self.pupil_col]=f'{pupil}'
         if self.verbose:
             print('##################\n### Distortion files:')
-            self.distortionfiles.write()
+            ixs = self.distortionfiles.ix_sort_by_cols(['filter','pupil','AperName'])
+            self.distortionfiles.write(indices=ixs)
 
     def find_ref_filter(self,filt,pupil,aperture,require_pupil=True):
         # we only need coeffs2asdf for filter mapping if needed
+        print('BBBBBBBBBBBBBBBB')
         coeffs = coeffs2asdf()
         if re.search('^nrc',aperture) is not None:
             if not require_pupil or pupil=='clear':
                 bla = 'NIRCAM'
             else:
                 bla = 'NIRCAMMASK'
+            print('BBBBBBBBBBBBBBBB11',bla)
             for reffilter in coeffs.metadata['imaging_filter'][bla]:
                 if filt.upper() in coeffs.metadata['imaging_filter'][bla][reffilter]:
                     return(0,reffilter.lower())
