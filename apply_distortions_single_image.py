@@ -19,7 +19,7 @@ class apply_distortion_single_image:
         if parser is None:
             parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 
-        parser.add_argument('rate_image',  help='rate fits file. If --rate_dir AND rate filename has not a directory, image is looked for in this directory')
+        parser.add_argument('rate_image',  help='rate fits file.')
         parser.add_argument('distortion_file',  help='distortion file, in asdf format')
 
         parser = self.default_options(parser)

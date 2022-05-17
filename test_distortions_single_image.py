@@ -12,13 +12,31 @@ from pdastro import makepath,rmfile
 from simple_jwst_phot import jwst_photclass
 from jwst.tweakreg import TweakRegStep
 from jwst import datamodels
+from apply_distortions_single_image import apply_distortion_single_image
 
-class test_distortion_singleim:
+
+class test_distortion_singleim(apply_distortion_single_image):
     def __init__(self):
+        apply_distortion_single_image.__init__(self)
         self.calphot=jwst_photclass()
         self.gaialignphot=jwst_photclass()
 
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
+        parser = apply_distortion_single_image.define_options(self,parser=parser,usage=usage,conflict_handler=conflict_handler)
+
+        parser.add_argument('--gaia_catname_for_testing', default='./LMC_gaia_DR3.nrcposs', help='Gaia catalog used for TESTING, not for tweakreg! (default=%(default)s)')
+
+        parser.add_argument('--align_gaia_SNR_min', default=10.0, help='when aligning with Gaia: mininum SNR above noise to trigger object in image (default=%(default)s)')
+
+        parser.add_argument('--skip_rate2cal_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the new distortion terms, assuming this has already been done, but still do the photometry.')
+        parser.add_argument('--skip_align2gaia_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the new distortion terms, assuming this has already been done, but still do the photometry.')
+
+        parser.add_argument('--xoffset', type=float, default=0.0, help='Initial guess for X offset in arcsec for align_gaia step. (default=%(default)s)')
+        parser.add_argument('--yoffset', type=float, default=0.0, help='Initial guess for Y offset in arcsec for align_gaia step. (default=%(default)s)')
+        parser.add_argument('--searchrad', type=float, default=3.0, help='The search radius in arcsec for a match for align_gaia step. Note: currently, this valiue is divided by 10 when the actual search is done! (default=%(default)s)')
+
+        return(parser)
+        
         if parser is None:
             parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 
@@ -52,7 +70,7 @@ class test_distortion_singleim:
         parser.add_argument('-v','--verbose', default=0, action='count')
 
         return(parser)
-
+    """
     def set_outdir(self,outrootdir=None,outsubdir=None):
         self.outdir = outrootdir
         if self.outdir is None: self.outdir = '.'
@@ -61,11 +79,9 @@ class test_distortion_singleim:
             self.outdir+=f'/{outsubdir}'
         
         return(self.outdir)
-
-
+ 
     def run_rate2cal(self,rate_image,distortion_file,outdir=None,
                      overwrite=False, skip_if_exists=False):
-        """
         Calwebb_image2 - does flat fielding, attaches WCS from distortion reffile, flux calibration
                          Outputs *cal.fits files
         checking format and if input files exist
@@ -94,7 +110,6 @@ class test_distortion_singleim:
         If True, Calwebb_image2 has been run and the cal image has been created
         If False, then calimagename already existed, and re-creation is skipped since skip_if_exists=True
 
-        """
 
         print(f'reducing file {rate_image} with distortion file {distortion_file}')
         stage2_img = Image2Pipeline()
@@ -147,6 +162,7 @@ class test_distortion_singleim:
             
         # return True means that rate2cal did run
         return(True,calfilename)
+    """
         
     def run_align2Gaia(self,cal_image,tweakreg=None,
                        kernel_fwhm=None, #float(default=2.5) # Gaussian kernel FWHM in pixels
@@ -205,6 +221,7 @@ class test_distortion_singleim:
         # return True means that rate2cal did run
         return(True,tweakregfilename)
     
+    """
     def apply_distortions(self,rate_image,
                 distortion_file,
                 overwrite = False,
@@ -219,15 +236,13 @@ class test_distortion_singleim:
         print('####################',runflag,skip_if_exists)
         if not runflag: 
             if (skip_rate2cal_if_exists |  skip_if_exists):
-                print('xXXXXXXX')
                 print(f'{calimname} already exists, skipping since skip_if_exists=True')
                 return(0)
             else:
-                print('YYYYYYYY')
                 raise RuntimeError(f'{calimname} already exists, stopping since skip_if_exists=False')
             
         return(0)
-
+    """
 
     def run_all(self,rate_image,
                 distortion_file,
