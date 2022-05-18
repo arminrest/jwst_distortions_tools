@@ -24,6 +24,7 @@ class apply_distortions(pdastroclass):
         self.apply_dist_singleim = apply_distortion_singleim()
         
         self.aperture_col = 'AperName'
+        self.detector_col = 'detector'
         self.filter_col = 'filter'
         self.pupil_col = 'pupil'
         
@@ -83,7 +84,7 @@ class apply_distortions(pdastroclass):
             hdr = fits.getheader(self.t.loc[ix,'filename'])
             detector = re.sub('long$','5',hdr['DETECTOR'].lower())
             self.t.loc[ix,self.aperture_col]=f'{detector}_{hdr["SUBARRAY"].lower()}'
-            self.t.loc[ix,'detector']=f'{hdr["DETECTOR"].lower()}'
+            self.t.loc[ix,'detector']=f'{detector}'
             self.t.loc[ix,'subarray']=f'{hdr["SUBARRAY"].lower()}'
             self.t.loc[ix,self.filter_col]=f'{hdr["FILTER"].lower()}'
             self.t.loc[ix,self.pupil_col]=f'{hdr["PUPIL"].lower()}'
@@ -110,8 +111,15 @@ class apply_distortions(pdastroclass):
             else:
                 raise RuntimeError(f'could not parse filename {os.path.basename(self.distortionfiles.t.loc[ix,"filename"])} for aperture, filter and/or pupil!')
 
+            m3 = re.search('(^[a-zA-Z0-9]+)',aperture)    
+            if m3 is not None:
+                detector =  m3.groups()[0]
+            else:
+                raise RuntimeError(f'could not parse aperture {aperture} for detector!')
+                
 
             self.distortionfiles.t.loc[ix,self.aperture_col]=f'{aperture}'
+            self.distortionfiles.t.loc[ix,self.detector_col]=f'{detector}'
             self.distortionfiles.t.loc[ix,self.filter_col]=f'{filt}'
             self.distortionfiles.t.loc[ix,self.pupil_col]=f'{pupil}'
         if self.verbose:
@@ -137,7 +145,8 @@ class apply_distortions(pdastroclass):
         
 
     def match_distortion4ratefile(self, ixs_rate=None, require_filter=True, require_pupil=True,
-                                  apertures=None, filts=None, pupils=None, allow_filter_mapping=True):
+                                  apertures=None, filts=None, pupils=None, allow_filter_mapping=True, 
+                                  match_detector_only=True):
         
         ixs_matches = []
         ixs_not_matches = []
@@ -170,7 +179,10 @@ class apply_distortions(pdastroclass):
         
         
         for ix_rate in ixs_rate:
-            ixs_coeff = self.distortionfiles.ix_equal(self.aperture_col,self.t.loc[ix_rate,self.aperture_col])
+            if match_detector_only:
+                ixs_coeff = self.distortionfiles.ix_equal(self.detector_col,self.t.loc[ix_rate,self.detector_col])
+            else:
+                ixs_coeff = self.distortionfiles.ix_equal(self.aperture_col,self.t.loc[ix_rate,self.aperture_col])
             #self.distortionfiles.write(indices=ixs_coeff)
 
             if require_filter:

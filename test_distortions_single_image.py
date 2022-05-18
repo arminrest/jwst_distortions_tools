@@ -20,8 +20,6 @@ class test_distortion_singleim(apply_distortion_singleim):
         self.calphot=jwst_photclass()
         self.gaialignphot=jwst_photclass()
         
-        print('FUCK!!!!')
-
     def default_options(self,parser):
         parser = apply_distortion_singleim.default_options(self,parser=parser)
 
@@ -141,7 +139,7 @@ class test_distortion_singleim(apply_distortion_singleim):
                        xoffset = 0, # Initial guess for X offset in arcsec. (Default=0.0)
                        yoffset = 0, # Initial guess for Y offset in arcsec. (Default=0.0)
                        outdir=None,overwrite=False, skip_if_exists=False):
-        
+        print('HHHHHH')
         if tweakreg is None:
             tweakreg = TweakRegStep()
             
@@ -231,7 +229,7 @@ class test_distortion_singleim(apply_distortion_singleim):
                     overwrite = overwrite, 
                     skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
         
-        print(f'###################### XXXX {skip_rate2cal_if_exists} {skip_if_exists} {runflag}')
+        print(f'###################### XXXX1 {skip_rate2cal_if_exists} {skip_if_exists} {runflag}')
         if not runflag: 
             if (skip_rate2cal_if_exists |  skip_if_exists):
                 print(f'{calimname} already exists, skipping since skip_if_exists=True')
@@ -244,7 +242,7 @@ class test_distortion_singleim(apply_distortion_singleim):
         else:
             print('####### Skipping photometry on cal image!')
         
-        print(f'###################### XXXX {skip_align2gaia_if_exists} {skip_if_exists} {runflag}')
+        print(f'###################### XXXX22 {skip_align2gaia_if_exists} {skip_if_exists} {runflag}')
         (runflag,tweakregfilename) = self.run_align2Gaia(calimname,
                     xoffset = xoffset,
                     yoffset = yoffset,
@@ -271,6 +269,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     testdist.verbose=args.verbose
+    testdist.calphot=jwst_photclass()
+    testdist.gaialignphot=jwst_photclass()
     
     testdist.set_outdir(args.outrootdir, args.outsubdir)
     

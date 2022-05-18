@@ -138,6 +138,8 @@ class jwst_photclass(pdastroclass):
         self.primaryhdr = self.im['PRIMARY'].header
         self.scihdr = self.im['SCI'].header
         
+        print(self.im.info())
+        
         self.instrument = self.primaryhdr['INSTRUME']
         self.aperture  = self.primaryhdr['APERNAME']
         
@@ -640,18 +642,19 @@ class jwst_photclass(pdastroclass):
             
         
     def run_phot(self,imagename, gaia_catname=None, DNunits=True, SNR_min=3.0):
-        if self.verbose:
-            print(f'\n### Doing photometry on {imagename}')
+        print(f'\n### Doing photometry on {imagename}')
+        print('JJJJ00')
         
         # load the image, and prepare it. The data and mask are saved in 
         # self.data and self.mask
         self.load_image(imagename,DNunits=DNunits,use_dq=True)
-        
+        print('JJJJ')
         # find the stars, saved in self.found_stars
         self.find_stars()
         
         #aperture phot, saved in self.t
         self.aperture_phot()
+        print('JJJJ11')
         
         # get the indices of good stars
         ixs_clean = self.clean_phottable(SNR_min=SNR_min)
@@ -659,6 +662,7 @@ class jwst_photclass(pdastroclass):
         
         # calculate the ra,dec
         self.xy_to_radec(indices=ixs_clean)
+        print('JJJJ22')
         
         # calculate the ideal coordinates
         self.radec_to_idl(indices=ixs_clean)

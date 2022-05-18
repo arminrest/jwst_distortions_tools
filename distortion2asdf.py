@@ -95,12 +95,13 @@ class coeffs2asdf(pdastroclass):
         self.metadata['imaging_filter']['NIRCAM']['F200W']=['F200W']
         self.metadata['imaging_filter']['NIRCAM']['F277W']=['F250M','F277W','F300M']
         self.metadata['imaging_filter']['NIRCAM']['F356W']=['F322W2','F356W','F360M']
-        self.metadata['imaging_filter']['NIRCAM']['F444W']=['F405N','F410M','F430M','F444W','F460M','F466N','F470N','F480M']
+        self.metadata['imaging_filter']['NIRCAM']['F444W']=['F410M','F430M','F444W','F460M','F480M']
         self.metadata['imaging_filter']['NIRCAM']['F335M']=['F335M']
         # This applies for images with MASKs in the pupil
         self.metadata['imaging_filter']['NIRCAMMASK']={}
         self.metadata['imaging_filter']['NIRCAMMASK']['F210M']=['F200W','F182M','F187N','F210M','F212N']
-        self.metadata['imaging_filter']['NIRCAMMASK']['F335M']=['F250M','F300M','F322W2','F356W','F360M','F335M','F405N','F410M','F430M','F444W','F460M','F466N','F470N','F480M']
+        # F405N F466N F470N cannot be added here
+        self.metadata['imaging_filter']['NIRCAMMASK']['F335M']=['F250M','F300M','F322W2','F356W','F360M','F335M','F410M','F430M','F444W','F460M','F480M']
 
 
         # EXPTYPE metadata-----------------------------------------------
