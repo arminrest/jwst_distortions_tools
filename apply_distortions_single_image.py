@@ -7,10 +7,10 @@ Created on Mon May 16 10:50:49 2022
 """
 
 from jwst.pipeline.calwebb_image2 import Image2Pipeline
-import argparse,re,sys,os
+import argparse,re,os
 from pdastro import makepath,rmfile
 
-class apply_distortion_single_image:
+class apply_distortion_singleim:
     def __init__(self):
         self.verbose=0
         self.outdir = None
@@ -133,6 +133,7 @@ class apply_distortion_single_image:
                 else:
                     raise RuntimeError(f'Image {calfilename} already exists! exiting. If you want to overwrite or skip rate2cal reduction, you can use "overwrite" or "skip_if_exists"')
             else:
+                print(f'WARNING! {calfilename} exists, deleting it since "overwrite" is set!')
                 # make sure cal frame is deleted
                 rmfile(calfilename)
                 
@@ -149,7 +150,7 @@ class apply_distortion_single_image:
 
 if __name__ == '__main__':
 
-    applydist = apply_distortion_single_image()
+    applydist = apply_distortion_singleim()
     parser = applydist.define_options()
     args = parser.parse_args()
     

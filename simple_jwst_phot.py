@@ -584,13 +584,16 @@ class jwst_photclass(pdastroclass):
                                                               gaiacat.t['dec'],
                                                               aperturename, 
                                                               primaryhdr, scihdr)
-
         # cut down to the objects that are within the image
         ixs_cat = gaiacat.ix_inrange('x_idl',xmin-max_sep,xmax+max_sep)
         ixs_cat = gaiacat.ix_inrange('y_idl',ymin-max_sep,ymax+max_sep,indices=ixs_cat)
         print(f'Keeping {len(ixs_cat)} out of {len(gaiacat.getindices())} catalog objects')
         ixs_cat = gaiacat.ix_not_null(['ra','dec'],indices=ixs_cat)
         print(f'Keeping {len(ixs_cat)}  after removing NaNs from ra/dec')
+
+        if len(ixs_cat) == 0:
+            print(f'WARNING!!!! 0 Gaia sources from catalog within the image bounderies! skipping the rest of the steps calculating x,y of the Gaia sources etc... ')
+            return(0)
 
         # Get the detector x,y position
         image_model = ImageModel(self.im)

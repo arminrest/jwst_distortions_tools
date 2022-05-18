@@ -7,12 +7,11 @@ Created on Mon Apr 25 09:39:07 2022
 """
 
 import argparse,glob,re,sys,os
-from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB
-import pandas as pd
+from pdastro import pdastroclass,unique
 from astropy.io import fits
 import numpy as np
 #from test_distortions_single_image import test_distortion_singleim
-from apply_distortions_single_image import apply_distortion_single_image
+from apply_distortions_single_image import apply_distortion_singleim
 from distortion2asdf import coeffs2asdf
 
 class apply_distortions(pdastroclass):
@@ -22,7 +21,7 @@ class apply_distortions(pdastroclass):
         self.verbose=0
         
         self.distortionfiles = pdastroclass()
-        self.apply_dist_singleim = apply_distortion_single_image()
+        self.apply_dist_singleim = apply_distortion_singleim()
         
         self.aperture_col = 'AperName'
         self.filter_col = 'filter'
@@ -122,14 +121,12 @@ class apply_distortions(pdastroclass):
 
     def find_ref_filter(self,filt,pupil,aperture,require_pupil=True):
         # we only need coeffs2asdf for filter mapping if needed
-        print('BBBBBBBBBBBBBBBB')
         coeffs = coeffs2asdf()
         if re.search('^nrc',aperture) is not None:
             if not require_pupil or pupil=='clear':
                 bla = 'NIRCAM'
             else:
                 bla = 'NIRCAMMASK'
-            print('BBBBBBBBBBBBBBBB11',bla)
             for reffilter in coeffs.metadata['imaging_filter'][bla]:
                 if filt.upper() in coeffs.metadata['imaging_filter'][bla][reffilter]:
                     return(0,reffilter.lower())

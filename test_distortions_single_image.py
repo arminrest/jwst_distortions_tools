@@ -6,23 +6,24 @@ Created on Thu Apr 21 14:32:42 2022
 @author: arest, bhilbert, mcorrenti, acanipe
 """
 
-from jwst.pipeline.calwebb_image2 import Image2Pipeline
-import argparse,os,re
+import os,re
 from pdastro import makepath,rmfile
 from simple_jwst_phot import jwst_photclass
 from jwst.tweakreg import TweakRegStep
 from jwst import datamodels
-from apply_distortions_single_image import apply_distortion_single_image
+from apply_distortions_single_image import apply_distortion_singleim
 
 
-class test_distortion_singleim(apply_distortion_single_image):
+class test_distortion_singleim(apply_distortion_singleim):
     def __init__(self):
-        apply_distortion_single_image.__init__(self)
+        apply_distortion_singleim.__init__(self)
         self.calphot=jwst_photclass()
         self.gaialignphot=jwst_photclass()
+        
+        print('FUCK!!!!')
 
-    def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
-        parser = apply_distortion_single_image.define_options(self,parser=parser,usage=usage,conflict_handler=conflict_handler)
+    def default_options(self,parser):
+        parser = apply_distortion_singleim.default_options(self,parser=parser)
 
         parser.add_argument('--gaia_catname_for_testing', default='./LMC_gaia_DR3.nrcposs', help='Gaia catalog used for TESTING, not for tweakreg! (default=%(default)s)')
 
@@ -37,39 +38,6 @@ class test_distortion_singleim(apply_distortion_single_image):
 
         return(parser)
         
-        if parser is None:
-            parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
-
-        # default for token is $MAST_API_TOKEN
-        if 'JWST_DISTORTION_OUTROOTDIR' in os.environ:
-            outrootdir = os.environ['JWST_DISTORTION_OUTROOTDIR']
-        else:
-            outrootdir = None
-
-
-        parser.add_argument('rate_image',  help='rate fits file. If --rate_dir AND rate filename has not a directory, image is looked for in this directory')
-        parser.add_argument('distortion_file',  help='distortion file, in asdf format')
-
-        parser.add_argument('--gaia_catname_for_testing', default='./LMC_gaia_DR3.nrcposs', help='Gaia catalog used for TESTING, not for tweakreg! (default=%(default)s)')
-
-        parser.add_argument('--align_gaia_SNR_min', default=10.0, help='when aligning with Gaia: mininum SNR above noise to trigger object in image (default=%(default)s)')
-
-        parser.add_argument('--outrootdir', default=outrootdir, help='Directory in which the cal images are located, which will be used to test the distortions. (default=%(default)s)')
-        parser.add_argument('--outsubdir', default=None, help='outsubdir added to output root directory (default=%(default)s)')
-        parser.add_argument('--overwrite', default=False, action='store_true', help='overwrite files if they exist.')
-
-        parser.add_argument('--skip_rate2cal_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the new distortion terms, assuming this has already been done, but still do the photometry.')
-        parser.add_argument('--skip_align2gaia_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the new distortion terms, assuming this has already been done, but still do the photometry.')
-        parser.add_argument('--skip_if_exists', default=False, action='store_true', help='Skip doing the analysis of a given input image if the cal file already exists, assuming the full analysis has been already done')
-
-        parser.add_argument('--xoffset', type=float, default=0.0, help='Initial guess for X offset in arcsec for align_gaia step. (default=%(default)s)')
-        parser.add_argument('--yoffset', type=float, default=0.0, help='Initial guess for Y offset in arcsec for align_gaia step. (default=%(default)s)')
-        parser.add_argument('--searchrad', type=float, default=3.0, help='The search radius in arcsec for a match for align_gaia step. Note: currently, this valiue is divided by 10 when the actual search is done! (default=%(default)s)')
-
-
-        parser.add_argument('-v','--verbose', default=0, action='count')
-
-        return(parser)
     """
     def set_outdir(self,outrootdir=None,outsubdir=None):
         self.outdir = outrootdir
@@ -257,11 +225,13 @@ class test_distortion_singleim(apply_distortion_single_image):
                 yoffset = 0.0,
                 ):
         
+        print(f'###################### {skip_rate2cal_if_exists} {skip_if_exists}')
         (runflag,calimname) = self.run_rate2cal(rate_image,
                     distortion_file,
                     overwrite = overwrite, 
                     skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
         
+        print(f'###################### XXXX {skip_rate2cal_if_exists} {skip_if_exists} {runflag}')
         if not runflag: 
             if (skip_rate2cal_if_exists |  skip_if_exists):
                 print(f'{calimname} already exists, skipping since skip_if_exists=True')
@@ -274,6 +244,7 @@ class test_distortion_singleim(apply_distortion_single_image):
         else:
             print('####### Skipping photometry on cal image!')
         
+        print(f'###################### XXXX {skip_align2gaia_if_exists} {skip_if_exists} {runflag}')
         (runflag,tweakregfilename) = self.run_align2Gaia(calimname,
                     xoffset = xoffset,
                     yoffset = yoffset,
