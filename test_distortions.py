@@ -78,9 +78,7 @@ if __name__ == '__main__':
     testdist.get_rate_files(args.rate_files,directory=args.rate_dir)
     testdist.get_distortion_files(args.distortion_files,directory=None)
     
-    ixs_matches,ixs_not_matches = testdist.match_distortion4ratefile(require_filter=not args.ignore_filters, 
-                                                                     require_pupil=not args.ignore_pupils,
-                                                                     apertures=args.apertures, 
+    ixs_matches,ixs_not_matches = testdist.match_distortion4ratefile(apertures=args.apertures, 
                                                                      filts=args.filters, 
                                                                      pupils=args.pupils)
     
