@@ -128,99 +128,30 @@ class apply_distortions(pdastroclass):
             ixs = self.distortionfiles.ix_sort_by_cols(['filter','pupil','AperName'])
             self.distortionfiles.write(indices=ixs)
 
-    def match_distortion4ratefileold(self, ixs_rate=None, require_filter=True, require_pupil=True,
-                                  apertures=None, filts=None, pupils=None, allow_filter_mapping=True, 
-                                  match_detector_only=True):
-        
-        ixs_matches = []
-        ixs_not_matches = []
-        
-        ixs_rate = self.getindices(indices=ixs_rate)
 
-        # if wanted, only use rate files with the specified apertures
-        if apertures is not None:
-            tmp_ixs = []
-            for aperture in apertures:
-                tmp_ixs.extend(self.ix_equal(self.aperture_col,aperture,indices=ixs_rate))
-            ixs_rate = unique(tmp_ixs)
-            ixs_rate.sort()
-            
-        # if wanted, only use rate files with the specified filters
-        if filts is not None:
-            tmp_ixs = []
-            for filt in filts:
-                tmp_ixs.extend(self.ix_equal(self.filter_col,filt,indices=ixs_rate))
-            ixs_rate = unique(tmp_ixs)
-            ixs_rate.sort()
-        
-        # if wanted, only use rate files with the specified pupils
-        if pupils is not None:
-            tmp_ixs = []
-            for pupil in pupils:
-                tmp_ixs.extend(self.ix_equal(self.pupil_col,pupil,indices=ixs_rate))
-            ixs_rate = unique(tmp_ixs)
-            ixs_rate.sort()
-        
-        
-        for ix_rate in ixs_rate:
-            if match_detector_only:
-                ixs_coeff = self.distortionfiles.ix_equal(self.detector_col,self.t.loc[ix_rate,self.detector_col])
-            else:
-                ixs_coeff = self.distortionfiles.ix_equal(self.aperture_col,self.t.loc[ix_rate,self.aperture_col])
-            #self.distortionfiles.write(indices=ixs_coeff)
-
-            if require_filter:
-                #print('filter cut')
-                ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,self.t.loc[ix_rate,self.filter_col],indices=ixs_coeff)
-                if len(ixs_coeff_filt)==0 and allow_filter_mapping:
-                    (errorflag,reffilter) = self.find_ref_filter(self.t.loc[ix_rate,self.filter_col],
-                                                                 self.t.loc[ix_rate,self.pupil_col],
-                                                                 self.t.loc[ix_rate,self.aperture_col],
-                                                                 require_pupil=require_pupil)
-                    if not errorflag:
-                        print(f'reference filter {reffilter}  found for filter {self.t.loc[ix_rate,self.filter_col]}')
-                        ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,reffilter,indices=ixs_coeff)
-                ixs_coeff = ixs_coeff_filt
-                
-            if require_pupil:
-                #print('pupil cut')
-                ixs_coeff = self.distortionfiles.ix_equal(self.pupil_col,self.t.loc[ix_rate,self.pupil_col],indices=ixs_coeff)
-                #self.distortionfiles.write(indices=ixs_coeff)
-            
-            # check the matches!
-            if len(ixs_coeff)==1:
-                self.t.loc[ix_rate,'distortion_match']=self.distortionfiles.t.loc[ixs_coeff[0],'filename']
-                ixs_matches.append(ix_rate)
-            elif len(ixs_coeff)==0:
-                print(f'WARNING! could not find match for {self.t.loc[ix_rate,"filename"]}')
-                self.t.loc[ix_rate,'distortion_match']=np.nan
-                ixs_not_matches.append(ix_rate)
-            elif len(ixs_coeff)>1:
-                print(f'ERROR: more than one match for {self.t.loc[ix_rate,"filename"]}!')
-                self.distortionfiles.write(indices=ixs_coeff)
-                raise RuntimeError(f'more than one match for {self.t.loc[ix_rate,"filename"]}!')
-                
-        print(f'{len(ixs_matches)} out of {len(ixs_rate)} matched!')
-        if self.verbose:
-            print('Matches:')
-            self.write(indices=ixs_matches)
-            
-        if len(ixs_not_matches)>0:
-            print(f'\n**********************************\n*** WARNING *** {len(ixs_not_matches)} out of {len(ixs_rate)} did not matched:')
-            self.write(indices=ixs_not_matches)
-            
-        return(ixs_matches,ixs_not_matches)
-
-    def find_ref_filter(self,filt,pupil,instrument):
+    def find_ref_filter(self,filt,pupil,instrument,detector):
         # we only need coeffs2asdf for filter mapping if needed
         coeffs = coeffs2asdf()
         if (instrument.lower()=='nircam') and (pupil!='clear'):
             instrument = 'nircammask'
 
+        foundflag=False
         for reffilter in coeffs.metadata['imaging_filter'][instrument.upper()]:
             if filt.upper() in coeffs.metadata['imaging_filter'][instrument.upper()][reffilter]:
-                return(0,reffilter.lower())
-        return(1,None)
+                foundflag=True
+                break
+
+        if foundflag:        
+            if (instrument.lower()=='nircam') and (reffilter in ['F210M','F335M']) and (re.search('^nrcb',detector.lower()) is not None):
+                if reffilter=='F210M':
+                    reffilter='F200W'
+                elif reffilter=='F335M':
+                    reffilter='F356W'
+                else:
+                    raise RuntimeError('BUG!!!!')
+            return(0,reffilter.lower())
+        else:
+            return(1,None)
         
 
     def match_distortion4ratefile(self, ixs_rate=None, 
@@ -274,16 +205,21 @@ class apply_distortions(pdastroclass):
                 # get the clear pupil files for normal imaging!!
                 target_pupil = 'clear'
             ixs_coeff = self.distortionfiles.ix_equal(self.pupil_col,target_pupil,indices=ixs_coeff)
+            if len(ixs_coeff)==0:
+                print(f'WARNING: No distortion files found with pupil={target_pupil}')
                 
             # now get the matching filter!
             ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,self.t.loc[ix_rate,self.filter_col],indices=ixs_coeff)
             if len(ixs_coeff_filt)==0 and allow_filter_mapping:
                 (errorflag,reffilter) = self.find_ref_filter(self.t.loc[ix_rate,self.filter_col],
                                                              target_pupil,
-                                                             self.t.loc[ix_rate,'instrument'])
+                                                             self.t.loc[ix_rate,'instrument'],
+                                                             self.t.loc[ix_rate,self.detector_col])
                 if not errorflag:
                     print(f'reference filter {reffilter}  found for filter {self.t.loc[ix_rate,self.filter_col]}')
                     ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,reffilter,indices=ixs_coeff)
+                    if len(ixs_coeff_filt)==0:
+                        print(f'WARNING: No distortion files found with reference filter={reffilter}!')
             ixs_coeff = ixs_coeff_filt
 
             
