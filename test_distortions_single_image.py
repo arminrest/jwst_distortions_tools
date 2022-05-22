@@ -9,7 +9,9 @@ Created on Thu Apr 21 14:32:42 2022
 import os,re
 from pdastro import makepath,rmfile
 from simple_jwst_phot import jwst_photclass
-from jwst.tweakreg import TweakRegStep
+#from jwst.tweakreg import TweakRegStep
+import tweakreg_hack
+
 from jwst import datamodels
 from apply_distortions_single_image import apply_distortion_singleim
 
@@ -132,23 +134,29 @@ class test_distortion_singleim(apply_distortion_singleim):
         
     def run_align2Gaia(self,cal_image,tweakreg=None,
                        kernel_fwhm=None, #float(default=2.5) # Gaussian kernel FWHM in pixels
-                       snr_threshold = 20.0, #float(default=10.0) # SNR threshold above the bkg
-                       searchrad=3.0, # (default=1.0): The search radius in arcsec for a match
+                       snr_threshold = 50.0, #float(default=10.0) # SNR threshold above the bkg
+                       separation=9, # minimum separation between reference stars in arcsec
+                       searchrad=0.3, # (default=1.0): The search radius in arcsec for a match
                        minobj = 50, #integer(default=15) # Minimum number of objects acceptable for matching
                        min_gaia = 30, #integer(min=0, default=5) # Min number of GAIA sources needed
                        xoffset = 0, # Initial guess for X offset in arcsec. (Default=0.0)
                        yoffset = 0, # Initial guess for Y offset in arcsec. (Default=0.0)
+                       brightest = 1000,
                        outdir=None,overwrite=False, skip_if_exists=False):
         print('HHHHHH')
         if tweakreg is None:
-            tweakreg = TweakRegStep()
-            
+            #tweakreg = TweakRegStep()
+            tweakreg = tweakreg_hack.TweakRegStep()
+
         tweakreg.align_to_gaia = True
         tweakreg.save_results = True
+        tweakreg.save_catalogs = True
         tweakreg.snr_threshold = snr_threshold
         tweakreg.searchrad = searchrad
+        tweakreg.separation = separation
         tweakreg.minobj = minobj
         tweakreg.min_gaia = min_gaia
+        tweakreg.brightest= brightest
         tweakreg.xoffset = xoffset
         tweakreg.yoffset = yoffset
 

@@ -46,7 +46,7 @@ import pandas as pd
 from pandas.core.dtypes.common import is_string_dtype
 
 
-hist= ('test reference file created from Veras analysis of OTE-10 data. Do not deliver to CRDS.')
+history_mainentry='distortion coefficients'
 
 class coeffs2asdf(pdastroclass):
     def __init__(self):
@@ -84,7 +84,7 @@ class coeffs2asdf(pdastroclass):
         self.metadata['imaging_pupil']['FULL_WEDGE_BAR']=['MASKBAR']
         #self.metadata['imaging_pupil']['']=['MASKBAR']
 
-        self.filters_with_distortions = ['F070W','F150W','F200W','F277W','F356W','F444W','F210M','F335M']
+        #self.filters_with_distortions = ['F070W','F150W','F200W','F277W','F356W','F444W','F210M','F335M']
         self.metadata['imaging_filter']={}
         #NIRCam mapping
         self.metadata['imaging_filter']['NIRCAM']={}
@@ -362,7 +362,7 @@ class coeffs2asdf(pdastroclass):
                                  siaf_xml_file=None,
                                  sci_filter=None,
                                  sci_pupil=None, sci_subarr=None, sci_exptype=None, 
-                                 history_entry=hist,
+                                 history=None,
                                  author=None, descrip=None, pedigree=None,
                                  useafter=None):
         """
@@ -421,7 +421,7 @@ class coeffs2asdf(pdastroclass):
             List of exposure types to which this distortion solution applies
             If None, self.metadata['exptype'][self.camera] will be used.
     
-        history_entry : str
+        history : str
             Text to be added as a HISTORY entry in the output reference file
     
         author : str
@@ -463,6 +463,15 @@ class coeffs2asdf(pdastroclass):
                 else:
                     if filt.upper() in self.metadata['imaging_filter']['NIRCAM']:
                         sci_filter = self.metadata['imaging_filter']['NIRCAM'][filt.upper()]
+                        
+                        ### HACK!! This is because we don't have module B F210M and F335M pupil=CLEAR
+                        #   images, and therefore for mod B we have to add the filter mapping
+                        #   from F210M to F200W, and from F335M to F356W
+                        if filt.upper() =='F200W' and self.module=='B':
+                            sci_filter.extend(self.metadata['imaging_filter']['NIRCAM']['F210M'])
+                        if filt.upper() =='F356W' and self.module=='B':
+                            sci_filter.extend(self.metadata['imaging_filter']['NIRCAM']['F335M'])
+                        
         else:
             raise RuntimeError(f'instrument {self.instrument} not supported yet')
          
@@ -663,9 +672,10 @@ class coeffs2asdf(pdastroclass):
 
 
         if pedigree is None:
-            d.meta.pedigree = 'FLIGHT'
+            d.meta.pedigree = 'INFLIGHT'
         else:
-            if pedigree.upper() not in ['DUMMY', 'GROUND', 'FLIGHT']:
+            if re.search('^DUMMY|^GROUND|^INFLIGHT',pedigree.upper()) is None:
+#            if pedigree.upper() not in ['DUMMY', 'GROUND', 'INFLIGHT']:
                 raise ValueError("Bad PEDIGREE value.")
             d.meta.pedigree = pedigree.upper()
     
@@ -697,27 +707,34 @@ class coeffs2asdf(pdastroclass):
         # Create initial HISTORY ENTRY
         sdict = {'name': 'distortion2asdf.py',
                  'author': author,
-                 'homepage': 'https://github.com/spacetelescope/nircam_calib',
+                 'homepage': 'https://github.com/arminrest/jwst_distortions_tools/distortion2asdf.py',
                  'version': '1.0'}
         
         #print('meta data: ',d.meta.instance)
          
-        entry = util.create_history_entry(history_entry, software=sdict)
+        entry = util.create_history_entry(history_mainentry, software=sdict)
         d.history = [entry]
-    
-        #Create additional HISTORY entries
-        #entry2 = util.create_history_entry(history_2)
-        #d.history.append(entry2)
-   
+        if history is not None:
+            for entry in history:
+                d.history.append(util.create_history_entry(entry))
         
         return(d)
     
     
-    def coefffile2adfs(self, filename, filt=None, outname=None, savemeta=True):
+    def coefffile2adfs(self, filename, filt=None, outname=None, 
+                       savemeta=True,
+                       history=None,author=None, 
+                       descrip=None, pedigree=None,
+                       useafter=None):
         # load the file
         self.load_coeff_file(filename)
 
-        distcoeff = self.create_asdf_reference_for_distortion(filt=filt)
+        distcoeff = self.create_asdf_reference_for_distortion(filt=filt,
+                                                              history=history,
+                                                              author=author, 
+                                                              descrip=descrip, 
+                                                              pedigree=pedigree,
+                                                              useafter=useafter)
 
         if outname is not None:
             distcoeff.save(outname)

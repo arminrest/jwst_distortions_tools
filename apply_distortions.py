@@ -141,7 +141,10 @@ class apply_distortions(pdastroclass):
                 foundflag=True
                 break
 
-        if foundflag:        
+        if foundflag:   
+            # HACK! This is because we don't have module B F210M and F335M pupil=CLEAR
+            # images, and therefore for mod B we use F200W instead of F210M and F356W 
+            # instead of  F335M as reference filters
             if (instrument.lower()=='nircam') and (reffilter in ['F210M','F335M']) and (re.search('^nrcb',detector.lower()) is not None):
                 if reffilter=='F210M':
                     reffilter='F200W'
@@ -149,6 +152,8 @@ class apply_distortions(pdastroclass):
                     reffilter='F356W'
                 else:
                     raise RuntimeError('BUG!!!!')
+                    
+            # return errorflag=0 and the reffilter
             return(0,reffilter.lower())
         else:
             return(1,None)

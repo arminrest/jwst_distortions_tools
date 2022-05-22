@@ -17,6 +17,15 @@ from plot_distortion_diffs import plot_distortionfiles_diffs
 import pysiaf
 import numpy as np
 
+pid_info = {}
+pid_info[1069] = {'description':'Distortion reference file created from NRC-21 (PID=1069) data during commissioning',
+                  'author':'V. Platais, E. Egami, A. Rest',
+                  'pedigree':'INFLIGHT 2022-04-27 2022-04-28'}
+pid_info[1070] = {'description':'Distortion reference file created from NRC-21b (PID=1070) data during commissioning',
+                  'author':'E. Egami, J. Girard, A. Rest',
+                  'pedigree':'INFLIGHT 2022-04-27 2022-04-28'}
+
+
 class combine_coeffs(pdastrostatsclass):
     def __init__(self):
         pdastrostatsclass.__init__(self)
@@ -376,10 +385,37 @@ class combine_coeffs(pdastrostatsclass):
             print(f'Saving {outbasename}.distcoeff.txt')
             self.results.write(outbasename+'.distcoeff.txt',indices=ixs_result,formatters=formatters)            
 
-            #coeffs = coeffs2asdf()
+            # convert to asdf file: get history etc
+            history = ['Files used to create this reference file:']
+            filenames = unique(self.t.loc[ixs_input,'filename'])
+            filenames.sort()
+            
+            # get the PID in order to get author etc defined at the top of the script
+            pids=[]
+            for filename in filenames:
+                m = re.search('_jw(\d\d\d\d\d)\d\d\d\d\d\d_',filename)
+                if m is not None:    
+                    pids.append(m.groups()[0])
+                history.append(os.path.basename(filename))
+            pids = unique(pids)
+            if len(pids)==1 and int(pids[0]) in pid_info:
+                pid=int(pids[0])
+                author = pid_info[pid]['author']
+                descrip = pid_info[pid]['description']
+                pedigree = pid_info[pid]['pedigree']
+                print(f'pid={pid}, setting author={author}, pedigree={pedigree}, and description={descrip}!')
+            else: 
+                print(f'\n!!!!!!!!!!!!!!!!\n!!!! WARNING!!\n!!!! pids={pids} not in pid_info, therefore not setting author, pedigree, and description!')
+                author = descrip = pedigree = None
             print(f'Saving {outbasename}.distcoeff.asdf')
-            #coeffs.coefffile2adfs(outbasename+'.distcoeff.txt', filt=filt, outname=f'{outbasename}.distcoeff.asdf')
-            self.results.coefffile2adfs(outbasename+'.distcoeff.txt', filt=filt, outname=f'{outbasename}.distcoeff.asdf')
+            #print(history,pids)
+            #sys.exit(0)
+            self.results.coefffile2adfs(outbasename+'.distcoeff.txt', filt=filt, 
+                                        outname=f'{outbasename}.distcoeff.asdf',
+                                        history=history,
+                                        author=author, 
+                                        descrip=descrip, 
+                                        pedigree=pedigree)
 
             print(f'Saving {outbasename}.singlefile.txt')
             self.write(outbasename+'.singlefile.txt',indices=ixs_input,formatters=formatters)
