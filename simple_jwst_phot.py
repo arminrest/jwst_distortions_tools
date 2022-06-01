@@ -160,7 +160,7 @@ def get_GAIA_sources(ra0,dec0,radius_deg,radius_factor=1.1,
                  
     if columns is not None:
         df = df[columns]
-                     
+
     return(df,racol,deccol)
 
     

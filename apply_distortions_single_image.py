@@ -238,6 +238,25 @@ class apply_distortion_singleim:
         # return True means that rate2cal did run
         return(True,calfilename)
 
+    def run_applydistortions(self,input_image,distortion_file,outdir=None,
+                             overwrite=False, skip_if_exists=False):
+        if re.search('rate\.fits$',input_image) is not None:
+            # if it is a rate file, do the full level2b steps
+            if self.verbose: print('This is a rate.fits file! doing the fill level2b part, and applying new distortions!')
+            (runflag,calimname) = self.run_applydistortions_rate2cal(input_image,
+                                                                     distortion_file,
+                                                                     outdir=outdir,
+                                                                     overwrite = overwrite, 
+                                                                     skip_if_exists = skip_if_exists)
+            
+        else:
+            if self.verbose: print('This is NOT a rate.fits file! Therefore just applying the distortions with AssignWcsStep')
+            (runflag,calimname) = self.run_applydistortions_assignwcs(input_image,
+                                                                      distortion_file,
+                                                                      outdir=outdir,
+                                                                      overwrite = overwrite, 
+                                                                      skip_if_exists = skip_if_exists)
+        return(runflag,calimname)
 
 if __name__ == '__main__':
 
@@ -248,8 +267,8 @@ if __name__ == '__main__':
     applydist.verbose=args.verbose
     
     applydist.set_outdir(args.outrootdir, args.outsubdir)
-    
-    applydist.run_applydistortions_rate2cal(args.rate_image,
-                                            args.distortion_file,
-                                            overwrite = args.overwrite,
-                                            skip_if_exists = args.skip_if_exists)
+
+    applydist.run_applydistortions(args.cal_image,
+                                   args.distortion_file,
+                                   overwrite = args.overwrite,
+                                   skip_if_exists = args.skip_if_exists)

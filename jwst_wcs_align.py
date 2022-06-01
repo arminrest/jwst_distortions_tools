@@ -171,7 +171,6 @@ def rotate_d_and_find_binmax(phot,ixs,d_col,col,
 
         # get the histogram
         d_rotated = phot.t.loc[ixs,d_col_rot]
-        weights = phot.t.loc[ixs,'aper_sum_3.5px']
         bins = np.arange(np.min(d_rotated),np.max(d_rotated),binsize)
         if bin_weights_flag:
             histo = np.histogram(d_rotated,bins=bins,weights=phot.t.loc[ixs,'__weights'])
@@ -715,8 +714,8 @@ class jwst_wcs_align(apply_distortion_singleim):
             plt.tight_layout()
             #if showplots: plt.show() 
             # add saveplots
-            
-        
+
+        print('GGGG')        
         # Here we correct for rotation so that we can robustly remove outlier matches
         
         # A straight line with a given slope is subtracted from dx versus y, which is 
@@ -752,6 +751,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                                   slope_max=slope_max,
                                                                   slope_stepsize=slope_stepsize,
                                                                   showplots=showplots)
+        print('GGGG1')        
 
               
         # Using the best dx_rotated, we first remove all entries with dx_rotated outside of dx_bestguess+-Nfwhm*fwhm
@@ -766,6 +766,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                       bin_weights_flag=bin_weights_flag,
                                                       showplots=showplots
                                                       )
+        print('GGGG2')        
         
         # Using the indices after the dx cut, we now also do a dy cut
         # slope in dy is the -slope of dx.
@@ -791,7 +792,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                       bin_weights_flag=bin_weights_flag,
                                                       showplots=showplots
                                                       )
-        
+        print('GGGG3')        
+       
 
         if savephottable:
             print(f'Saving {outbasename}.good.phot.txt')
@@ -938,25 +940,14 @@ class jwst_wcs_align(apply_distortion_singleim):
                 saveplots=0,
                 savephottable=0
                 ):
-
             
         # apply distortion coefficients if wanted.
         if distortion_file is not None:
             # apply distortion terms
-            if re.search('rate\.fits$',input_image) is not None:
-                # if it is a rate file, do the full level2b steps
-                if self.verbose: print('This is a rate.fits file! doing the fill level2b part, and applying new distortions!')
-                (runflag,calimname) = self.run_applydistortions_rate2cal(input_image,
-                                                                         distortion_file,
-                                                                         overwrite = overwrite, 
-                                                                         skip_if_exists = (skip_applydistortions_if_exists |  skip_if_exists))
-                
-            else:
-                if self.verbose: print('This is NOT a rate.fits file! Therefore just applying the distortions with AssignWcsStep')
-                (runflag,calimname) = self.run_applydistortions_assignwcs(input_image,
-                                                                          distortion_file,
-                                                                          overwrite = overwrite, 
-                                                                          skip_if_exists = (skip_applydistortions_if_exists |  skip_if_exists))
+            (runflag,calimname) = self.run_applydistortions(input_image,
+                                                            distortion_file,
+                                                            overwrite = overwrite, 
+                                                            skip_if_exists = (skip_applydistortions_if_exists |  skip_if_exists))
         else:
             calimname = input_image
                

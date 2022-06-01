@@ -37,28 +37,18 @@ class apply_distortions(pdastroclass):
         
         # default for token is $MAST_API_TOKEN
         if 'JWST_DISTORTION_IMAGEDIR' in os.environ:
-            ratedir = os.environ['JWST_DISTORTION_IMAGEDIR']
+            inputdir = os.environ['JWST_DISTORTION_IMAGEDIR']
         else:
-            ratedir = None
+            inputdir = None
 
 
-        parser.add_argument('--rate_dir', default=ratedir, help='Directory in which the rate images are located, which will be used to test the distortions. (default=%(default)s)')
-        parser.add_argument('--rate_files', nargs='+', default=['*_rate.fits'], help='list of rate file(pattern)s to which the distortion files are applied to. "rate_dir" is used if not None (default=%(default)s)')
+        parser.add_argument('--input_dir', default=inputdir, help='Directory in which the cal or rate images are located, to which the distortions are applied. (default=%(default)s)')
+        parser.add_argument('--input_files', nargs='+', default=['*_cal.fits'], help='list of cal or rate file(pattern)s to which the distortion files are applied to. "input_dir" is used if not None (default=%(default)s)')
         parser.add_argument('--distortion_files', nargs='+', default=['*.asdf'], help='list of the distortion file(pattern)s to be applied. (default=%(default)s)')
 
-        #parser.add_argument('--outdir', default='same_as_distortionfiles', help='output directory. If "same_as_distortionfiles", then the cal/photometry images are saved in the same directory as the distortion coefficient files (default=%(default)s)')
-        #parser.add_argument('--overwrite', default=False, action='store_true', help='overwrite files if they exist.')
-
-        #parser.add_argument('--skip_rate2cal_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the new distortion terms, assuming this has already been done, but still do the photometry.')
-
-        #parser.add_argument('--ignore_filters', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of filter.')
-        #parser.add_argument('--ignore_pupils', default=False, action='store_true', help='distortions are grouped by aperture/filter/pupil. Use this option if you want to create distortion files independent of pupil.')
-
-        parser.add_argument('--apertures', nargs='+', default=None, help='constrain the rate file list to these apertures (default=%(default)s)')
-        parser.add_argument('--filters', nargs='+', default=None, help='constrain the rate file list to these filters (default=%(default)s)')
-        parser.add_argument('--pupils', nargs='+', default=None, help='constrain the rate file list to these pupils (default=%(default)s)')
-
-        #parser.add_argument('-v','--verbose', default=0, action='count')
+        parser.add_argument('--apertures', nargs='+', default=None, help='constrain the input file list to these apertures (default=%(default)s)')
+        parser.add_argument('--filters', nargs='+', default=None, help='constrain the input file list to these filters (default=%(default)s)')
+        parser.add_argument('--pupils', nargs='+', default=None, help='constrain the input file list to these pupils (default=%(default)s)')
 
         return(parser)
     
@@ -78,7 +68,7 @@ class apply_distortions(pdastroclass):
         if self.verbose: print(f'Found {len(filenames)} files matching filepatterns {filepatterns}')
         return(filenames)
     
-    def get_rate_files(self,filepatterns,directory=None):
+    def get_input_files(self,filepatterns,directory=None):
         self.t['filename'] = self.get_files(filepatterns,directory=directory)
         for ix in self.getindices():
             hdr = fits.getheader(self.t.loc[ix,'filename'])
@@ -90,7 +80,7 @@ class apply_distortions(pdastroclass):
             self.t.loc[ix,self.filter_col]=f'{hdr["FILTER"].lower()}'
             self.t.loc[ix,self.pupil_col]=f'{hdr["PUPIL"].lower()}'
         if self.verbose:
-            print('##################\n### Rate files:')
+            print('##################\n### Input files:')
             self.write()
         
     def get_distortion_files(self,filepatterns,directory=None):
@@ -159,53 +149,53 @@ class apply_distortions(pdastroclass):
             return(1,None)
         
 
-    def match_distortion4ratefile(self, ixs_rate=None, 
+    def match_distortion4inputfile(self, ixs_im=None, 
                                   apertures=None, filts=None, pupils=None, allow_filter_mapping=True, 
                                   match_detector_only=True):
         
         ixs_matches = []
         ixs_not_matches = []
         
-        ixs_rate = self.getindices(indices=ixs_rate)
+        ixs_im = self.getindices(indices=ixs_im)
 
-        # if wanted, only use rate files with the specified apertures
+        # if wanted, only use input files with the specified apertures
         if apertures is not None:
             tmp_ixs = []
             for aperture in apertures:
-                tmp_ixs.extend(self.ix_equal(self.aperture_col,aperture,indices=ixs_rate))
-            ixs_rate = unique(tmp_ixs)
-            ixs_rate.sort()
+                tmp_ixs.extend(self.ix_equal(self.aperture_col,aperture,indices=ixs_im))
+            ixs_im = unique(tmp_ixs)
+            ixs_im.sort()
             
-        # if wanted, only use rate files with the specified filters
+        # if wanted, only use input files with the specified filters
         if filts is not None:
             tmp_ixs = []
             for filt in filts:
-                tmp_ixs.extend(self.ix_equal(self.filter_col,filt,indices=ixs_rate))
-            ixs_rate = unique(tmp_ixs)
-            ixs_rate.sort()
+                tmp_ixs.extend(self.ix_equal(self.filter_col,filt,indices=ixs_im))
+            ixs_im = unique(tmp_ixs)
+            ixs_im.sort()
         
-        # if wanted, only use rate files with the specified pupils
+        # if wanted, only use input files with the specified pupils
         if pupils is not None:
             tmp_ixs = []
             for pupil in pupils:
-                tmp_ixs.extend(self.ix_equal(self.pupil_col,pupil,indices=ixs_rate))
-            ixs_rate = unique(tmp_ixs)
-            ixs_rate.sort()
+                tmp_ixs.extend(self.ix_equal(self.pupil_col,pupil,indices=ixs_im))
+            ixs_im = unique(tmp_ixs)
+            ixs_im.sort()
         
         
-        for ix_rate in ixs_rate:
+        for ix_im in ixs_im:
             # match either on detector or aperture. In general, detector is what you want...
             if match_detector_only:
-                ixs_coeff = self.distortionfiles.ix_equal(self.detector_col,self.t.loc[ix_rate,self.detector_col])
+                ixs_coeff = self.distortionfiles.ix_equal(self.detector_col,self.t.loc[ix_im,self.detector_col])
             else:
-                ixs_coeff = self.distortionfiles.ix_equal(self.aperture_col,self.t.loc[ix_rate,self.aperture_col])
+                ixs_coeff = self.distortionfiles.ix_equal(self.aperture_col,self.t.loc[ix_im,self.aperture_col])
 
-            if self.t.loc[ix_rate,'instrument']=='nircam' and (self.t.loc[ix_rate,self.pupil_col] in ['maskbar','maskrnd']):
+            if self.t.loc[ix_im,'instrument']=='nircam' and (self.t.loc[ix_im,self.pupil_col] in ['maskbar','maskrnd']):
                 # coronography!!!
                 # pupil has to match!
                 #print('corono!!!')
-                target_pupil = self.t.loc[ix_rate,self.pupil_col]
-                #ixs_coeff = self.distortionfiles.ix_equal(self.pupil_col,self.t.loc[ix_rate,self.pupil_col],indices=ixs_coeff)
+                target_pupil = self.t.loc[ix_im,self.pupil_col]
+                #ixs_coeff = self.distortionfiles.ix_equal(self.pupil_col,self.t.loc[ix_im,self.pupil_col],indices=ixs_coeff)
             else:
                 # get the clear pupil files for normal imaging!!
                 target_pupil = 'clear'
@@ -214,14 +204,14 @@ class apply_distortions(pdastroclass):
                 print(f'WARNING: No distortion files found with pupil={target_pupil}')
                 
             # now get the matching filter!
-            ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,self.t.loc[ix_rate,self.filter_col],indices=ixs_coeff)
+            ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,self.t.loc[ix_im,self.filter_col],indices=ixs_coeff)
             if len(ixs_coeff_filt)==0 and allow_filter_mapping:
-                (errorflag,reffilter) = self.find_ref_filter(self.t.loc[ix_rate,self.filter_col],
+                (errorflag,reffilter) = self.find_ref_filter(self.t.loc[ix_im,self.filter_col],
                                                              target_pupil,
-                                                             self.t.loc[ix_rate,'instrument'],
-                                                             self.t.loc[ix_rate,self.detector_col])
+                                                             self.t.loc[ix_im,'instrument'],
+                                                             self.t.loc[ix_im,self.detector_col])
                 if not errorflag:
-                    print(f'reference filter {reffilter}  found for filter {self.t.loc[ix_rate,self.filter_col]}')
+                    print(f'reference filter {reffilter}  found for filter {self.t.loc[ix_im,self.filter_col]}')
                     ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,reffilter,indices=ixs_coeff)
                     if len(ixs_coeff_filt)==0:
                         print(f'WARNING: No distortion files found with reference filter={reffilter}!')
@@ -230,24 +220,24 @@ class apply_distortions(pdastroclass):
             
             # check the matches!
             if len(ixs_coeff)==1:
-                self.t.loc[ix_rate,'distortion_match']=self.distortionfiles.t.loc[ixs_coeff[0],'filename']
-                ixs_matches.append(ix_rate)
+                self.t.loc[ix_im,'distortion_match']=self.distortionfiles.t.loc[ixs_coeff[0],'filename']
+                ixs_matches.append(ix_im)
             elif len(ixs_coeff)==0:
-                print(f'WARNING! could not find match for {self.t.loc[ix_rate,"filename"]}')
-                self.t.loc[ix_rate,'distortion_match']=np.nan
-                ixs_not_matches.append(ix_rate)
+                print(f'WARNING! could not find match for {self.t.loc[ix_im,"filename"]}')
+                self.t.loc[ix_im,'distortion_match']=np.nan
+                ixs_not_matches.append(ix_im)
             elif len(ixs_coeff)>1:
-                print(f'ERROR: more than one match for {self.t.loc[ix_rate,"filename"]}!')
+                print(f'ERROR: more than one match for {self.t.loc[ix_im,"filename"]}!')
                 self.distortionfiles.write(indices=ixs_coeff)
-                raise RuntimeError(f'more than one match for {self.t.loc[ix_rate,"filename"]}!')
+                raise RuntimeError(f'more than one match for {self.t.loc[ix_im,"filename"]}!')
                 
-        print(f'{len(ixs_matches)} out of {len(ixs_rate)} matched!')
+        print(f'{len(ixs_matches)} out of {len(ixs_im)} matched!')
         if self.verbose:
             print('Matches:')
             self.write(indices=ixs_matches)
             
         if len(ixs_not_matches)>0:
-            print(f'\n**********************************\n*** WARNING *** {len(ixs_not_matches)} out of {len(ixs_rate)} did not matched:')
+            print(f'\n**********************************\n*** WARNING *** {len(ixs_not_matches)} out of {len(ixs_im)} did not matched:')
             self.write(indices=ixs_not_matches)
             
         return(ixs_matches,ixs_not_matches)
@@ -263,16 +253,23 @@ class apply_distortions(pdastroclass):
         
         for ix in ixs:
             distfile = self.t.loc[ix,'distortion_match']
-            ratefile = self.t.loc[ix,'filename']
+            inputfile = self.t.loc[ix,'filename']
             #applydist_singleim = test_distortion_singleim()
             self.apply_dist_singleim.verbose = self.verbose
             
-            if re.search('same_as_distortionfiles',outrootdir.lower()):
+            if outrootdir is not None and re.search('same_as_distortionfiles',outrootdir.lower()):
                 self.apply_dist_singleim.set_outdir(os.path.dirname(distfile),outsubdir)
                 
-                #self.applydist_singleim.apply_distortions(ratefile,distfile,skip_rate2cal_if_exists=skip_rate2cal_if_exists)
+                #self.applydist_singleim.apply_distortions(inputfile,distfile,skip_rate2cal_if_exists=skip_rate2cal_if_exists)
             try:
-                (runflag,calfile) = self.apply_dist_singleim.run_rate2cal(ratefile,distfile, overwrite = overwrite, skip_if_exists=skip_if_exists)
+                (runflag,calfile) = self.apply_dist_singleim.run_applydistortions(inputfile,
+                                                                                  distfile,
+                                                                                  overwrite = overwrite, 
+                                                                                  skip_if_exists=skip_if_exists)
+
+                #(runflag,calfile) = self.apply_dist_singleim.run_rate2cal(ratefile,distfile, 
+                #                                                          overwrite = overwrite, 
+                #                                                          skip_if_exists=skip_if_exists)
                 self.t.loc[ix,'errorflag']=False
                 self.t.loc[ix,'skipflag']=(not runflag)
             except Exception as e:
@@ -287,19 +284,19 @@ if __name__ == '__main__':
     
     applydist.verbose=args.verbose
     
-    applydist.get_rate_files(args.rate_files,directory=args.rate_dir)
+    applydist.get_input_files(args.input_files,directory=args.input_dir)
     applydist.get_distortion_files(args.distortion_files,directory=None)
     
     """
-    ixs_matches,ixs_not_matches = applydist.match_distortion4ratefile(require_filter=not args.ignore_filters, 
+    ixs_matches,ixs_not_matches = applydist.match_distortion4inputfile(require_filter=not args.ignore_filters, 
                                                                      require_pupil=not args.ignore_pupils,
                                                                      apertures=args.apertures, 
                                                                      filts=args.filters, 
                                                                      pupils=args.pupils)
     """
-    ixs_matches,ixs_not_matches = applydist.match_distortion4ratefile(apertures=args.apertures, 
-                                                                      filts=args.filters, 
-                                                                      pupils=args.pupils)
+    ixs_matches,ixs_not_matches = applydist.match_distortion4inputfile(apertures=args.apertures, 
+                                                                       filts=args.filters, 
+                                                                       pupils=args.pupils)
     
     if len(ixs_matches)==0:
         print('NO MATCHES FOUND!! {len(ixs_not_matches)} unmatched images. exiting...')
