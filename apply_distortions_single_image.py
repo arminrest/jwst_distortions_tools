@@ -7,6 +7,8 @@ Created on Mon May 16 10:50:49 2022
 """
 
 from jwst.pipeline.calwebb_image2 import Image2Pipeline
+from jwst.assign_wcs import AssignWcsStep
+
 import argparse,re,os
 from pdastro import makepath,rmfile
 
@@ -19,7 +21,7 @@ class apply_distortion_singleim:
         if parser is None:
             parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 
-        parser.add_argument('rate_image',  help='rate fits file.')
+        parser.add_argument('cal_image',  help='rate fits file.')
         parser.add_argument('distortion_file',  help='distortion file, in asdf format')
 
         parser = self.default_options(parser)
@@ -34,14 +36,14 @@ class apply_distortion_singleim:
         #    ratedir = None
 
         # default directory for output
-        if 'JWST_DISTORTION_OUTROOTDIR' in os.environ:
-            outrootdir = os.environ['JWST_DISTORTION_OUTROOTDIR']
+        if 'JWST_OUTROOTDIR' in os.environ:
+            outrootdir = os.environ['JWST_OUTROOTDIR']
         else:
             outrootdir = None
 
         #parser.add_argument('--rate_dir', default=ratedir, help='Directory in which the rate images are located, which will be used to test the distortions. (default=%(default)s)')
 
-        parser.add_argument('--outrootdir', default=outrootdir, help='Directory in which the cal images are located, which will be used to test the distortions. (default=%(default)s)')
+        parser.add_argument('--outrootdir', default=outrootdir, help='output root directory. The output directoy is the output root directory + the outsubdir if not None (default=%(default)s)')
         parser.add_argument('--outsubdir', default=None, help='outsubdir added to output root directory (default=%(default)s)')
         parser.add_argument('--overwrite', default=False, action='store_true', help='overwrite files if they exist.')
 
@@ -60,8 +62,97 @@ class apply_distortion_singleim:
         
         return(self.outdir)
 
+    def run_applydistortions_assignwcs(self,cal_image,distortion_file,outdir=None,
+                     overwrite=False, skip_if_exists=False):
+        """
+        Calwebb_image2 - does flat fielding, attaches WCS from distortion reffile, flux calibration
+                         Outputs *cal.fits files
+        checking format and if input files exist
 
-    def run_rate2cal(self,rate_image,distortion_file,outdir=None,
+        Parameters
+        ----------
+        cal_image : TYPE
+            DESCRIPTION.
+        distortion_file : TYPE
+            DESCRIPTION.
+        outdir : TYPE, optional
+            DESCRIPTION. The default is None.
+        overwrite : TYPE, optional
+            DESCRIPTION. The default is False.
+        skip_if_exists : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        Raises
+        ------
+        RuntimeError
+            DESCRIPTION.
+
+        Returns
+        -------
+        (True/False,calimagename)
+        If True, Calwebb_image2 has been run and the cal image has been created
+        If False, then calimagename already existed, and re-creation is skipped since skip_if_exists=True
+
+        """
+
+        print(f'assigning WCS to file {cal_image} using distortion file {distortion_file}')
+        step = AssignWcsStep()
+
+        if not os.path.isfile(cal_image):
+            raise RuntimeError(f'image {cal_image} does not exist')
+
+        if distortion_file.lower() == 'none':
+            print('WARNING!! not applying any distortion file!!')
+        else:
+            if re.search('\.asdf$',distortion_file) is None:
+                raise RuntimeError(f'distortion file {distortion_file} does not have .asdf suffix. asdf format required.')
+            if not os.path.isfile(distortion_file):
+                raise RuntimeError(f'distortion file {distortion_file} does not exist')
+            step.override_distortion = distortion_file
+            
+        if outdir is None:
+            outdir=self.outdir
+            
+        step.save_results = True
+ 
+        #if outdir is None:
+        #    outdir=os.path.dirname(cal_image)
+        assignwcsfilename = re.sub('\_[a-zA-Z0-9]+\.fits$','_assignwcsstep.fits',os.path.basename(cal_image))
+        if assignwcsfilename == os.path.basename(cal_image):
+            raise RuntimeError('Could not get assignwcsstep filename from {os.path.basename(cal_image)}!')
+        assignwcsfilename = f'{outdir}/{assignwcsfilename}'
+        
+        if self.verbose: print(f'Setting output directory for assignwcsstep.fits file to {outdir}')
+        step.output_dir = outdir
+        if not os.path.isdir(outdir):
+            makepath(outdir)
+
+        if os.path.isfile(assignwcsfilename):
+            if not overwrite:
+                if skip_if_exists:
+                    # return False means that rate2cal did not run
+                    print(f'Image {assignwcsfilename} already exists, skipping recreating it...')
+                    return(False,assignwcsfilename)
+                else:
+                    raise RuntimeError(f'Image {assignwcsfilename} already exists! exiting. If you want to overwrite or skip, you can use "overwrite" or "skip_if_exists"')
+            else:
+                print(f'WARNING! {assignwcsfilename} exists, deleting it since "overwrite" is set!')
+                # make sure cal frame is deleted
+                rmfile(assignwcsfilename)
+                
+        print(f'Creating {assignwcsfilename}')
+        step.run(cal_image)
+        
+        #make sure the image got created
+        if not os.path.isfile(assignwcsfilename):
+            raise RuntimeError(f'Image {assignwcsfilename} did not get created!!')
+        else:
+            print(f'distortions applied to {assignwcsfilename}!!')
+            
+        # return True means that rate2cal did run
+        return(True,assignwcsfilename)
+
+    def run_applydistortions_rate2cal(self,rate_image,distortion_file,outdir=None,
                      overwrite=False, skip_if_exists=False):
         """
         Calwebb_image2 - does flat fielding, attaches WCS from distortion reffile, flux calibration
@@ -158,7 +249,7 @@ if __name__ == '__main__':
     
     applydist.set_outdir(args.outrootdir, args.outsubdir)
     
-    applydist.run_rate2cal(args.rate_image,
-                           args.distortion_file,
-                           overwrite = args.overwrite,
-                           skip_if_exists = args.skip_if_exists)
+    applydist.run_applydistortions_rate2cal(args.rate_image,
+                                            args.distortion_file,
+                                            overwrite = args.overwrite,
+                                            skip_if_exists = args.skip_if_exists)

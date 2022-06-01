@@ -38,99 +38,6 @@ class test_distortion_singleim(apply_distortion_singleim):
 
         return(parser)
         
-    """
-    def set_outdir(self,outrootdir=None,outsubdir=None):
-        self.outdir = outrootdir
-        if self.outdir is None: self.outdir = '.'
-        
-        if outsubdir is not None:
-            self.outdir+=f'/{outsubdir}'
-        
-        return(self.outdir)
- 
-    def run_rate2cal(self,rate_image,distortion_file,outdir=None,
-                     overwrite=False, skip_if_exists=False):
-        Calwebb_image2 - does flat fielding, attaches WCS from distortion reffile, flux calibration
-                         Outputs *cal.fits files
-        checking format and if input files exist
-
-        Parameters
-        ----------
-        rate_image : TYPE
-            DESCRIPTION.
-        distortion_file : TYPE
-            DESCRIPTION.
-        outdir : TYPE, optional
-            DESCRIPTION. The default is None.
-        overwrite : TYPE, optional
-            DESCRIPTION. The default is False.
-        skip_if_exists : TYPE, optional
-            DESCRIPTION. The default is False.
-
-        Raises
-        ------
-        RuntimeError
-            DESCRIPTION.
-
-        Returns
-        -------
-        (True/False,calimagename)
-        If True, Calwebb_image2 has been run and the cal image has been created
-        If False, then calimagename already existed, and re-creation is skipped since skip_if_exists=True
-
-
-        print(f'reducing file {rate_image} with distortion file {distortion_file}')
-        stage2_img = Image2Pipeline()
-
-        if re.search('_rate\.fits$',rate_image) is None:
-            raise RuntimeError(f'rate image {rate_image} does not have _rate.fits suffix')
-        if not os.path.isfile(rate_image):
-            raise RuntimeError(f'rate image {rate_image} does not exist')
-
-        if distortion_file.lower() == 'none':
-            print('WARNING!! not applying any distortion file!!',stage2_img.assign_wcs.override_distortion)
-        else:
-            if re.search('\.asdf$',distortion_file) is None:
-                raise RuntimeError(f'distortion file {distortion_file} does not have .asdf suffix. asdf format required.')
-            if not os.path.isfile(distortion_file):
-                raise RuntimeError(f'distortion file {distortion_file} does not exist')
-            stage2_img.assign_wcs.override_distortion = distortion_file
-            
-        if outdir is None:
-            outdir=self.outdir
-            
-        stage2_img.save_results = True
- 
-        #if outdir is None:
-        #    outdir=os.path.dirname(rate_image)
-        calfilename = f'{outdir}/'+re.sub('rate\.fits$','cal.fits',os.path.basename(rate_image))
-        if self.verbose: print(f'Setting output directory for cal.fits file to {outdir}')
-        stage2_img.output_dir = outdir
-        if not os.path.isdir(outdir):
-            makepath(outdir)
-
-        if os.path.isfile(calfilename):
-            if not overwrite:
-                if skip_if_exists:
-                    # return False means that rate2cal did not run
-                    print(f'Image {calfilename} already exists, skipping recreating it...')
-                    return(False,calfilename)
-                else:
-                    raise RuntimeError(f'Image {calfilename} already exists! exiting. If you want to overwrite or skip rate2cal reduction, you can use "overwrite" or "skip_if_exists"')
-            else:
-                # make sure cal frame is deleted
-                rmfile(calfilename)
-                
-        print(f'Creating {calfilename}')
-        stage2_img.run(rate_image)
-        
-        #make sure the image got created
-        if not os.path.isfile(calfilename):
-            raise RuntimeError(f'Image {calfilename} did not get created!!')
-            
-        # return True means that rate2cal did run
-        return(True,calfilename)
-    """
         
     def run_align2Gaia(self,cal_image,tweakreg=None,
                        kernel_fwhm=None, #float(default=2.5) # Gaussian kernel FWHM in pixels
@@ -143,7 +50,6 @@ class test_distortion_singleim(apply_distortion_singleim):
                        yoffset = 0, # Initial guess for Y offset in arcsec. (Default=0.0)
                        brightest = 1000,
                        outdir=None,overwrite=False, skip_if_exists=False):
-        print('HHHHHH')
         if tweakreg is None:
             #tweakreg = TweakRegStep()
             tweakreg = tweakreg_hack.TweakRegStep()
@@ -194,29 +100,6 @@ class test_distortion_singleim(apply_distortion_singleim):
 
         # return True means that rate2cal did run
         return(True,tweakregfilename)
-    
-    """
-    def apply_distortions(self,rate_image,
-                distortion_file,
-                overwrite = False,
-                skip_if_exists = False,
-                skip_rate2cal_if_exists = False,
-                ):
-        
-        (runflag,calimname) = self.run_rate2cal(rate_image,
-                    distortion_file,
-                    overwrite = overwrite, 
-                    skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))
-        print('####################',runflag,skip_if_exists)
-        if not runflag: 
-            if (skip_rate2cal_if_exists |  skip_if_exists):
-                print(f'{calimname} already exists, skipping since skip_if_exists=True')
-                return(0)
-            else:
-                raise RuntimeError(f'{calimname} already exists, stopping since skip_if_exists=False')
-            
-        return(0)
-    """
 
     def run_all(self,rate_image,
                 distortion_file,
@@ -232,7 +115,7 @@ class test_distortion_singleim(apply_distortion_singleim):
                 ):
         
         print(f'###################### {skip_rate2cal_if_exists} {skip_if_exists}')
-        (runflag,calimname) = self.run_rate2cal(rate_image,
+        (runflag,calimname) = self.run_applydistortions_rate2cal(rate_image,
                     distortion_file,
                     overwrite = overwrite, 
                     skip_if_exists = (skip_rate2cal_if_exists |  skip_if_exists))

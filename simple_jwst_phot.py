@@ -8,7 +8,7 @@ Created on Wed Apr 27 09:21:15 2022
 This is class wrapper around doing simple photometry on a single JWST image
 """
 
-import argparse,glob,re,sys,os,time,copy
+import argparse,glob,re,sys,os,time,copy,math
 
 import glob as glob
 
@@ -25,10 +25,173 @@ from astropy.visualization import simple_norm
 
 import jwst
 from jwst.datamodels import ImageModel
+from jwst import datamodels
+import astropy.units as u
 import pysiaf
+from astroquery.gaia import Gaia
+from astropy.time import Time
+import pandas as pd
 
-from pdastro import pdastroclass,makepath4file,unique,AnotB,AorB,AandB
+from pdastro import pdastroclass,pdastrostatsclass,makepath4file,unique,AnotB,AorB,AandB,rmfile
 from astropy.coordinates import SkyCoord, match_coordinates_sky
+
+
+def get_GAIA_sources_NP(f,pm=True,radius_factor=2):
+    """Return a GAIA catalog/table that is location and time matched to an observation.
+    It applies the GAIA proper motion by default (pm=True).
+    The (x,y) pixel coordinates of the GAIA source are also returned in  'x' and 'y' column.
+    radius_factor is 2 by default and hence about twice that of the FOV but can be set."""
+
+    h = fits.open(f)[1].header
+    d = fits.open(f)[1].data
+
+    direct_with_wcs = datamodels.open(f)
+    world_to_pix = direct_with_wcs.meta.wcs.get_transform('world','detector')
+    pix_to_world = direct_with_wcs.meta.wcs.get_transform('detector','world')
+
+    sy,sx = np.shape(d)
+    ra0,dec0 = pix_to_world(sx/2,sy/2)
+    radius = np.abs(pix_to_world(sx,sy)[1] - dec0)*radius_factor # Approx radius needed in deg
+        
+    job5 = Gaia.launch_job_async("SELECT * \
+                    FROM gaiadr2.gaia_source WHERE CONTAINS(POINT('ICRS',\
+                    gaiadr2.gaia_source.ra,gaiadr2.gaia_source.dec),\
+                    CIRCLE('ICRS',{},{} ,{}))=1;".format(ra0,dec0,radius))
+    tb_gaia = job5.get_results() 
+    print("Number of stars:",len(tb_gaia))
+    
+    if pm is True:
+        time_gaia = Time(tb_gaia['ref_epoch'], format = 'jyear')[0]
+        time_obs = Time(h['MJD-AVG'], format ='mjd')
+
+        dRA = ((time_obs - time_gaia).to(u.yr).value * tb_gaia['pmra'].data * u.mas / np.cos(np.deg2rad(tb_gaia['dec']))).to(u.deg).value
+        dDec = ((time_obs - time_gaia).to(u.yr).value * tb_gaia['pmdec'].data * u.mas).to(u.deg).value
+
+        tb_gaia['ra'] = tb_gaia['ra'] + dRA
+        tb_gaia['dec'] = tb_gaia['dec'] + dDec
+    
+    tb_gaia['x'],tb_gaia['y'] = world_to_pix(tb_gaia['ra'],tb_gaia['dec'])
+    
+    ok = (np.isfinite(tb_gaia['x'])) & (np.isfinite(tb_gaia['y'])) 
+    return tb_gaia[ok]
+
+def get_GAIA_sources(ra0,dec0,radius_deg,radius_factor=1.1,
+                     mjd=None, # if mjd!=None, then proper motion (pm) adjustement is done
+                     pm_median = False, # if pm_median, then the median proper motion is added instead of the individual ones
+                     datarelease='edr3',
+                     calc_mag_errors=True,
+                     rename_mag_colnames=True, # renames from f'phot_{filt}_mean_mag' to f'{filt}'
+                     remove_null=True,
+                     columns=['source_id','ref_epoch','ra','ra_error','dec','dec_error','pmra','pmra_error','pmdec','pmdec_error',
+                              'g','g_err','bp','bp_err','rp','rp_err','bp_rp','bp_g','g_rp']):
+#                     columns=['source_id','ref_epoch','ra','ra_error','dec','dec_error','pmra','pmra_error','pmdec','pmdec_error',
+#                              'phot_g_mean_mag','phot_bp_mean_mag','phot_rp_mean_mag','bp_rp','bp_g','g_rp','phot_g_mean_flux','phot_g_mean_flux_error','phot_bp_mean_flux','phot_bp_mean_flux_error','phot_rp_mean_flux','phot_rp_mean_flux_error']):
+    if datarelease is None:
+        dr = 'gaiadr2'
+    elif datarelease.lower() in ['dr2','gaiadr2']:
+        dr = 'gaiadr2'
+    elif datarelease.lower() in ['edr3','gaiaedr3']:
+        dr = 'gaiaedr3'
+    else:
+        raise RuntimeError(f'datarelease {datarelease} not known yet')
+    
+    query ="SELECT * FROM {}.gaia_source WHERE CONTAINS(POINT('ICRS',\
+            {}.gaia_source.ra,{}.gaia_source.dec),\
+            CIRCLE('ICRS',{},{} ,{}))=1;".format(dr,dr,dr,ra0,dec0,radius_deg)
+    print(f'query:{query}')
+    job5 = Gaia.launch_job_async(query)
+    tb_gaia = job5.get_results() 
+    print("Number of stars:",len(tb_gaia))
+    
+    if mjd is not None:
+        print(f'### Applying proper motion correction to epoch mjd={mjd}')
+        time_gaia = Time(tb_gaia['ref_epoch'], format = 'jyear')[0]
+        time_obs = Time(mjd, format ='mjd')
+
+        dRA = ((time_obs - time_gaia).to(u.yr).value * tb_gaia['pmra'].data * u.mas / np.cos(np.deg2rad(tb_gaia['dec']))).to(u.deg).value
+        dDec = ((time_obs - time_gaia).to(u.yr).value * tb_gaia['pmdec'].data * u.mas).to(u.deg).value
+
+        if pm_median:
+            ok = (np.isfinite(dRA)) & (np.isfinite(dDec)) 
+            dRA_median = np.median(dRA[ok])
+            dDec_median = np.median(dDec[ok])
+            print(f'adding median pm dRA={dRA_median} and dDec={dDec_median}')
+            tb_gaia['ra1'] = tb_gaia['ra'] + dRA_median
+            tb_gaia['dec1'] = tb_gaia['dec'] + dDec_median
+            tb_gaia['ref_epoch1'] = time_obs.decimalyear
+        else:
+            tb_gaia['ra1'] = tb_gaia['ra'] + dRA
+            tb_gaia['dec1'] = tb_gaia['dec'] + dDec
+            tb_gaia['ref_epoch1'] = time_obs.decimalyear
+        if not('ra1' in columns): columns.append('ra1')
+        if not('dec1' in columns): columns.append('dec1')
+        if not('ref_epoch1' in columns): columns.append('ref_epoch1')
+        #tb_gaia['dRA'] = dRA
+        #tb_gaia['dDec'] = dDec
+        #columns.extend(['dRA','dDec'])
+        racol='ra1'
+        deccol='dec1'
+    else:
+        print(f'### NO propoer motion correction!!!')
+        racol='ra'
+        deccol='dec'
+    
+    df = tb_gaia.to_pandas()
+
+    # renames columns from f'phot_{filt}_mean_mag' to f'{filt}'
+    if rename_mag_colnames:
+        for filt in ['g','bp','rp']:
+            df.rename(columns={f'phot_{filt}_mean_mag':f'{filt}'},inplace=True)
+                              
+    if calc_mag_errors:
+        for filt in ['g','bp','rp']:
+            fluxcol = f'phot_{filt}_mean_flux'
+            dfluxcol = f'{fluxcol}_error'
+            df[f'{filt}_err'] =  2.5 / math.log(10.0) * df[dfluxcol] / df[fluxcol]
+
+    if remove_null:
+        ixs = df.index.values
+        for colname in [racol,deccol]:
+            #print('XXX',indices)
+            (notnull,) = np.where(pd.notnull(df.loc[ixs,colname]))
+            ixs = ixs[notnull]
+        df = df.loc[ixs]
+        print("Number of stars after removing nan's:",len(df[racol]))
+                 
+    if columns is not None:
+        df = df[columns]
+                     
+    return(df,racol,deccol)
+
+    
+
+def get_GAIA_sources_for_image(imagefilename,pm=True,radius_factor=1.1):
+    """Return a GAIA catalog/table that is location and time matched to an observation.
+    It applies the GAIA proper motion by default (pm=True).
+    The (x,y) pixel coordinates of the GAIA source are also returned in  'x' and 'y' column.
+    radius_factor is 1.1 by default and hence about 10% that of the FOV but can be set.
+    original author: Nor Pirzkal, modified by Armin Rest
+    """
+
+    im = fits.open(imagefilename)
+
+    hdr = im['SCI'].header
+    nx = hdr['NAXIS1']
+    ny = hdr['NAXIS2']
+
+    image_model = ImageModel(im)
+ 
+    ra0,dec0 = image_model.meta.wcs(nx/2.0-1,ny/2.0-1)
+    coord0 = SkyCoord(ra0,dec0,unit=(u.deg, u.deg), frame='icrs')
+    radius_deg = []
+    for x in [0,nx-1]:        
+        for y in [0,ny-1]:     
+            ra,dec = image_model.meta.wcs(x,y)
+            radius_deg.append(coord0.separation(SkyCoord(ra,dec,unit=(u.deg, u.deg), frame='icrs')).deg)
+    radius_deg = np.amax(radius_deg)*radius_factor 
+
+    df,racol,deccol = get_GAIA_sources(ra0,dec0,radius_deg,mjd=hdr['MJD-AVG'])
+    return(df,racol,deccol)
 
 def get_image_siaf_aperture(aperturename, primaryhdr, scihdr):
 
@@ -73,9 +236,9 @@ def xy_to_idl(x, y, aperturename, primaryhdr, scihdr):
     return x_idl, y_idl
     
 
-class jwst_photclass(pdastroclass):
+class jwst_photclass(pdastrostatsclass):
     def __init__(self):
-        pdastroclass.__init__(self)
+        pdastrostatsclass.__init__(self)
         
         self.filters = {}
         self.filters['NIRCAM'] = ['F070W', 'F090W', 'F115W', 'F140M', 'F150W2', 'F150W', 'F162M', 'F164N', 'F182M',
@@ -132,7 +295,7 @@ class jwst_photclass(pdastroclass):
         return(parser)
 
         
-    def load_image(self, imagename, imagetype=None, DNunits=False, use_dq=False):
+    def load_image(self, imagename, imagetype=None, DNunits=False, use_dq=False,skip_preparing=False):
         self.imagename = imagename
         self.im = fits.open(imagename)
         self.primaryhdr = self.im['PRIMARY'].header
@@ -146,7 +309,7 @@ class jwst_photclass(pdastroclass):
         if self.verbose: print(f'Instrument: {self.instrument}, aperture:{self.aperture}')
         
         if imagetype is None:
-            if re.search('cal\.fits$|tweakregstep\.fits',imagename):
+            if re.search('cal\.fits$|tweakregstep\.fits$|assignwcsstep\.fits$',imagename):
                 self.imagetype = 'cal'
             elif re.search('i2d\.fits$',imagename):
                 self.imagetype = 'i2d'
@@ -155,20 +318,22 @@ class jwst_photclass(pdastroclass):
         else:
             self.imagetype = imagetype
             
-        if self.imagetype == 'cal':
-            #print('VVVVV',self.im.info())
-            #sys.exit(0)
-            dq=None
-            if use_dq: dq = self.im['DQ'].data
-            (self.data,self.mask,self.DNunits) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
-                                                                    area = self.im['AREA'].data,
-                                                                    dq = dq,
-                                                                    DNunits=DNunits)
-        elif self.imagetype == 'i2d':
-            (self.data,self.mask,self.DNunits) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
-                                                                    DNunits=DNunits)
-        else:
-            raise RuntimeError(f'image type {self.imagetype} not yet implemented!')
+        if not skip_preparing:
+            # prepare the data.
+            if self.imagetype == 'cal':
+                #print('VVVVV',self.im.info())
+                #sys.exit(0)
+                dq=None
+                if use_dq: dq = self.im['DQ'].data
+                (self.data,self.mask,self.DNunits) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
+                                                                        area = self.im['AREA'].data,
+                                                                        dq = dq,
+                                                                        DNunits=DNunits)
+            elif self.imagetype == 'i2d':
+                (self.data,self.mask,self.DNunits) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
+                                                                        DNunits=DNunits)
+            else:
+                raise RuntimeError(f'image type {self.imagetype} not yet implemented!')
         
 
     def prepare_image(self,data_original, imhdr, area=None, dq=None, 
@@ -550,7 +715,7 @@ class jwst_photclass(pdastroclass):
         self.t.loc[indices,ycol_idl]=y_idl
   
         return x_idl, y_idl
-    
+    """
     def match_gaiacat(self,gaia_catname,
                       max_sep = 1.0,
                       aperturename=None,
@@ -629,19 +794,179 @@ class jwst_photclass(pdastroclass):
         #self.t.loc[ixs_obj_small_d2d].plot.scatter('y_idl','dy_idl')
         #self.t.loc[ixs_obj_small_d2d].plot.scatter('y_idl','dx_idl')
         #self.t.loc[ixs_obj_small_d2d].plot.scatter('x_idl','d2d')
+    """
+
+    def init_refcat(self,refcatname,mjd=None,
+                    refcat_racol=None,refcat_deccol=None):
+        self.refcat = pdastroclass()
+
+        self.refcat.name = refcatname
+
+        self.refcat.racol = None
+        self.refcat.deccol = None
+        self.refcat.short = None
+        self.refcat.cols2copy = []
         
-    def get_photfilename(self,photfilename=None):
-        if photfilename is not None:
-            return(photfilename)
+        if refcatname.lower()=='gaia':
+            if mjd is not None:
+                self.refcat.racol = 'ra1'
+                self.refcat.deccol = 'dec1'
+            else:
+                self.refcat.racol = 'ra'
+                self.refcat.deccol = 'dec'
+            self.refcat.name = refcatname
+            self.refcat.short = 'gaia'
+            self.refcat.cols2copy = ['ra_error','dec_error','g','g_err','rp','rp_err','g_rp']
+        elif os.path.basename(refcatname)=='LMC_gaia_DR3.nrcposs':
+            self.refcat.load_spacesep(refcatname)
+            self.refcat.racol = 'ra'
+            self.refcat.deccol = 'dec'
+            self.refcat.name = refcatname
+            self.refcat.short = 'gaia'
+            self.refcat.cols2copy = ['gaia_mag']
+        else:
+            if os.path.isfile(refcatname):
+                pass
+            else:
+                raise RuntimeError(f'Don\'t know waht to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
+                
+        if refcat_racol is not None:
+            self.refcat.racol = refcat_racol
+        if refcat_deccol is not None:
+            self.refcat.deccol = refcat_deccol
         
-        photfilename = re.sub('\.fits$','.phot.txt',self.imagename)
-        if photfilename == self.imagename:
-            raise RuntimeError(f'could not get photfilename from {self.imagename}')
+        return(0)
+
+    def load_refcat(self,refcatname,
+                    ra0=None,dec0=None,radius_deg=None,
+                    mjd=None,
+                    pm_median=False,
+                    refcat_racol=None,refcat_deccol=None,pmflag=True):
+
+        # initialize the refcat, and set racol,deccol and other
+        # parameters depending on the choice of refcat
+        self.init_refcat(refcatname,mjd=mjd,
+                         refcat_racol=refcat_racol,refcat_deccol=refcat_deccol)
+        print('vvvvvvv',self.refcat.racol,self.refcat.deccol)
         
+        if refcatname.lower()=='gaia':
+            self.refcat.t,self.refcat.racol,self.refcat.deccol = get_GAIA_sources(ra0,dec0,radius_deg,mjd=mjd,pm_median=pm_median)
+        elif os.path.basename(refcatname)=='LMC_gaia_DR3.nrcposs':
+            self.refcat.load_spacesep(refcatname)
+        else:
+            if os.path.isfile(refcatname):
+                pass
+            else:
+                raise RuntimeError(f'Don\'t know waht to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
+                
+        self.refcat.t['ID']=self.refcat.getindices()
+        
+        if refcat_racol is not None:
+            self.refcat.racol = refcat_racol
+        if refcat_deccol is not None:
+            self.refcat.deccol = refcat_deccol
+        
+        return(0)
+    
+    def match_refcat(self,
+                     max_sep = 1.0,
+                     refcatshort=None,
+                     aperturename=None,
+                     primaryhdr=None, 
+                     scihdr=None,
+                     indices=None):
+        print(f'Matching reference catalog {self.refcat.name}')
+
+        if refcatshort is None: refcatshort = self.refcat.short
+
+        if primaryhdr is None: primaryhdr=self.primaryhdr
+        if scihdr is None: scihdr=self.scihdr
+        
+        if aperturename is None:
+            aperturename = self.aperture
+
+        # make sure there are no NaNs        
+        ixs_obj = self.ix_not_null(['ra','dec'],indices=indices)
+        # get SkyCoord objects (needed for matching)
+        objcoord = SkyCoord(self.t.loc[ixs_obj,'ra'],self.t.loc[ixs_obj,'dec'], unit='deg')
+
+        
+        # find the x_idl and y_idl range, so that we can cut down the objects from the outside catalog!!
+        xmin = self.t.loc[ixs_obj,'x_idl'].min()
+        xmax = self.t.loc[ixs_obj,'x_idl'].max()
+        ymin = self.t.loc[ixs_obj,'y_idl'].min()
+        ymax = self.t.loc[ixs_obj,'y_idl'].max()
+        print(f'image objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
+
+        #### gaia catalog
+        # get ideal coords into table
+        self.refcat.t['x_idl'], self.refcat.t['y_idl'] = radec_to_idl(self.refcat.t[self.refcat.racol], 
+                                                                      self.refcat.t[self.refcat.deccol],
+                                                                      aperturename, 
+                                                                      primaryhdr, scihdr)
+        # cut down to the objects that are within the image
+        ixs_cat = self.refcat.ix_inrange('x_idl',xmin-max_sep,xmax+max_sep)
+        ixs_cat = self.refcat.ix_inrange('y_idl',ymin-max_sep,ymax+max_sep,indices=ixs_cat)
+        print(f'Keeping {len(ixs_cat)} out of {len(self.refcat.getindices())} catalog objects')
+        ixs_cat = self.refcat.ix_not_null([self.refcat.racol,self.refcat.deccol],indices=ixs_cat)
+        print(f'Keeping {len(ixs_cat)}  after removing NaNs from ra/dec')
+
+        if len(ixs_cat) == 0:
+            print('WARNING!!!! 0 Gaia sources from catalog within the image bounderies! skipping the rest of the steps calculating x,y of the Gaia sources etc... ')
+            return(0)
+
+        # Get the detector x,y position
+        image_model = ImageModel(self.im)
+        world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
+        self.refcat.t.loc[ixs_cat,'x'], self.refcat.t.loc[ixs_cat,'y'] = world_to_detector(self.refcat.t.loc[ixs_cat,self.refcat.racol],self.refcat.t.loc[ixs_cat,self.refcat.deccol])
+
+        refcatcoord = SkyCoord(self.refcat.t.loc[ixs_cat,self.refcat.racol],self.refcat.t.loc[ixs_cat,self.refcat.deccol], unit='deg')
+    
+        #idx, d2d, _ = match_coordinates_sky(self.t.loc[ixs_obj,'coord'], self.refcat.t.loc[ixs_cat,'coord'])
+        idx, d2d, _ = match_coordinates_sky(objcoord,refcatcoord)
+        # ixs_cat4obj has the same length as ixs_obj
+        # for each object in ixs_obj, it contains the index to the self.refcat entry
+        ixs_cat4obj = ixs_cat[idx]
+
+
+        # copy over the relevant columns from refcat. The columns are preceded with '{refcatshort}_'
+        cols2copy = [self.refcat.racol,self.refcat.deccol,'x','y','x_idl','y_idl','ID']
+        cols2copy.extend(self.refcat.cols2copy)
+
+        for refcat_col in cols2copy:
+            
+            if refcat_col == self.refcat.racol:
+                obj_col = f'{refcatshort}_ra'
+            elif refcat_col == self.refcat.deccol:
+                obj_col = f'{refcatshort}_dec'
+            else:
+                obj_col = f'{refcatshort}_{refcat_col}'
+                
+            self.t.loc[ixs_obj,obj_col]=list(self.refcat.t.loc[ixs_cat4obj,refcat_col])
+        # also add d2d
+        self.t.loc[ixs_obj,f'{refcatshort}_d2d']=d2d.arcsec
+
+        return(0)
+        
+    def get_photfilename(self,photfilename=None,imagename=None):
+        if photfilename is None:
+            return(None)
+
+        if photfilename.lower() == 'none':
+            return(None)
+        
+        if photfilename.lower() == 'auto':
+            if imagename is None:
+                raise RuntimeError(f'could not get photfilename from {imagename}')
+                
+            photfilename = re.sub('\.fits$','.phot.txt',imagename)
+            if photfilename == imagename:
+                raise RuntimeError(f'could not get photfilename from {self.imagename}')
+            
         return(photfilename)
             
         
-    def run_phot(self,imagename, gaia_catname=None, DNunits=True, SNR_min=3.0):
+    def run_phot_old(self,imagename, gaia_catname=None, DNunits=True, SNR_min=3.0):
         print(f'\n### Doing photometry on {imagename}')
         
         # load the image, and prepare it. The data and mask are saved in 
@@ -674,6 +999,116 @@ class jwst_photclass(pdastroclass):
         photfilename = self.get_photfilename()
         print(f'Saving {photfilename}')
         self.write(photfilename,indices=ixs_clean)
+        
+    def get_radecinfo_image(self,im=None,nx=None,ny=None):
+        if im is None: im=self.im
+        image_model = ImageModel(im)
+        if nx is None: nx = int(im['SCI'].header['NAXIS1'])
+        if ny is None: ny = int(im['SCI'].header['NAXIS2'])
+                
+        ra0,dec0 = image_model.meta.wcs(nx/2.0-1,ny/2.0-1)
+        coord0 = SkyCoord(ra0,dec0,unit=(u.deg, u.deg), frame='icrs')
+        radius_deg = []
+        for x in [0,nx-1]:        
+            for y in [0,ny-1]:     
+                ra,dec = image_model.meta.wcs(x,y)
+                radius_deg.append(coord0.separation(SkyCoord(ra,dec,unit=(u.deg, u.deg), frame='icrs')).deg)
+        radius_deg = np.amax(radius_deg)
+
+        print(ra0,dec0,radius_deg)
+        return(ra0,dec0,radius_deg)
+
+        
+    def run_phot(self,imagename, 
+                 refcatname=None,
+                 refcat_racol=None,
+                 refcat_deccol=None,
+                 pmflag = True, # apply proper motion
+                 pm_median=False,# if pm_median, then the median proper motion is added instead of the individual ones
+                 photfilename=None,
+                 load_photcat_if_exists=False,
+                 rematch_refcat=False,
+                 overwrite=False,
+                 DNunits=True, SNR_min=3.0):
+        print(f'\n### Doing photometry on {imagename}')
+
+        # get the photfilename. photfilename='auto' removes fits from image name and replaces it with phot.txt
+        self.photfilename = self.get_photfilename(photfilename,imagename)
+        # Load photcat if wanted
+        do_photometry_flag=True
+        photcat_loaded = False
+        if (self.photfilename is not None):
+            print(f'photometry catalog filename: {self.photfilename}')
+            if os.path.isfile(self.photfilename):
+                if load_photcat_if_exists:
+                    print(f'photcat {self.photfilename} already exists, loading it instead of recreating it')
+                    self.load(self.photfilename)
+                    photcat_loaded = True
+                    # skip redoing the photometry
+                    do_photometry_flag=False
+                elif overwrite:
+                    print(f'photcat {self.photfilename} already exists, but recreating it since overwrite=True')
+                    rmfile(self.photfilename)
+                else:
+                    raise RuntimeError(f'photcat {self.photfilename} already exists, exiting! if you want to overwrite, use --overwrite option!')
+        else:
+            print('NO photometry catalog filename')
+       
+        # load the image, and prepare it. The data and mask are saved in 
+        # self.data and self.mask
+        self.load_image(imagename,DNunits=DNunits,use_dq=True)
+        # only do the photometry if not reloaded
+        if do_photometry_flag:
+    
+            # find the stars, saved in self.found_stars
+            self.find_stars()
+            
+            #aperture phot, saved in self.t
+            self.aperture_phot()
+             
+        
+        # get the indices of good stars
+        ixs_clean = self.clean_phottable(SNR_min=SNR_min)
+        print(f'{len(ixs_clean)} out of {len(self.getindices())} entries remain in photometry table')
+        
+        # calculate the ra,dec
+        self.xy_to_radec(indices=ixs_clean)
+         
+        # calculate the ideal coordinates
+        self.radec_to_idl(indices=ixs_clean)
+        # calculate the ideal coordinates
+        #self.xy_to_idl(indices=ixs_clean,xcol_idl='x_idl_test',ycol_idl='y_idl_test')
+        
+        # get the refcat and match it, but only if either the photometry has 
+        # been done (not photcat_loaded), or if rematch_refcat is requested
+        if (refcatname is not None):
+            if pmflag: 
+                mjd=self.scihdr['MJD-AVG']
+            else: 
+                mjd=None
+            if (rematch_refcat or (not photcat_loaded)):
+                if self.verbose: print(f'Getting {refcatname} and matching it')
+                (ra0,dec0,radius_deg)=self.get_radecinfo_image()
+                self.load_refcat(refcatname,
+                                 ra0,dec0,radius_deg,
+                                 mjd=mjd,
+                                 pm_median=pm_median,
+                                 refcat_racol=refcat_racol,
+                                 refcat_deccol=refcat_deccol)
+                self.match_refcat(indices=ixs_clean)
+            else:
+                # set refcat parameters like refcat.
+                self.init_refcat(refcatname,mjd=mjd,
+                                 refcat_racol=refcat_racol,
+                                 refcat_deccol=refcat_deccol)
+                
+        
+        #self.write(self.get_photfilename()+'.all')
+        # save the catalog
+        if self.photfilename is not None:
+            print(f'Saving {self.photfilename}')
+            self.write(self.photfilename,indices=ixs_clean)
+        return(self.photfilename)
         
 if __name__ == '__main__':
     phot = jwst_photclass()
