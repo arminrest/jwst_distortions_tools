@@ -245,11 +245,13 @@ class jwst_photclass(pdastrostatsclass):
                                   'F187N', 'F200W', 'F210M', 'F212N', 'F250M', 'F277W', 'F300M', 'F322W2', 'F323N',
                                   'F335M', 'F356W', 'F360M', 'F405N', 'F410M', 'F430M', 'F444W', 'F460M', 'F466N', 'F470N', 'F480M']
         self.filters['NIRISS'] = ['F090W', 'F115W', 'F140M', 'F150W', 'F158M', 'F200W', 'F277W', 'F356W', 'F380M', 'F430M', 'F444W', 'F480M']
+        self.filters['FGS'] = ['NA']
 
         self.psf_fwhm = {}
         self.psf_fwhm['NIRCAM'] = [0.987, 1.103, 1.298, 1.553, 1.628, 1.770, 1.801, 1.494, 1.990, 2.060, 2.141, 2.304, 2.341, 1.340,
                                    1.444, 1.585, 1.547, 1.711, 1.760, 1.830, 1.901, 2.165, 2.179, 2.300, 2.302, 2.459, 2.507, 2.535, 2.574]
         self.psf_fwhm['NIRISS'] = [1.40, 1.40, 1.50, 1.50, 1.50, 1.50, 1.50, 1.60, 1.70, 1.80, 1.80, 1.80]
+        self.psf_fwhm['FGS'] = [1.50]
 
         self.dict_utils = {}
         for instrument in self.filters:
@@ -288,7 +290,18 @@ class jwst_photclass(pdastrostatsclass):
         if parser is None:
             parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
 
+        # default directory for output
+        if 'JWST_OUTROOTDIR' in os.environ:
+            outrootdir = os.environ['JWST_OUTROOTDIR']
+        else:
+            outrootdir = None
+
         parser.add_argument('image',  help='input image file')
+        
+        parser.add_argument('--photfilename', default='auto', help='output filename for photometry catalog. if "auto", then the fits of the image filename is substituted with phot.txt. If outrootdir and/or outsubdir is not None, then they are used for the path. (default=%(default)s)')
+        parser.add_argument('--outrootdir', default=outrootdir, help='output root directory. The output directoy for the photometry file is the output root directory + the outsubdir if not None (default=%(default)s)')
+        parser.add_argument('--outsubdir', default=None, help='outsubdir added to output root directory (default=%(default)s)')
+        parser.add_argument('--overwrite', default=False, action='store_true', help='overwrite files if they exist.')
 
         parser.add_argument('-v','--verbose', default=0, action='count')
 
@@ -324,7 +337,9 @@ class jwst_photclass(pdastrostatsclass):
                 #print('VVVVV',self.im.info())
                 #sys.exit(0)
                 dq=None
-                if use_dq: dq = self.im['DQ'].data
+                if use_dq: 
+                    dq = self.im['DQ'].data
+                    print('Using DQ extension!!')
                 (self.data,self.mask,self.DNunits) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
                                                                         area = self.im['AREA'].data,
                                                                         dq = dq,
@@ -416,7 +431,6 @@ class jwst_photclass(pdastrostatsclass):
             if self.verbose: print('Background median and rms using Background 2D:', median, std)
             
         else:
-            
             std = bkgrms(data)
             bkg = mmm_bkg(data)
             data_bkgsub = data.copy()
@@ -469,8 +483,12 @@ class jwst_photclass(pdastrostatsclass):
         if scihdr is None: scihdr=self.scihdr
         
         det = primaryhdr['DETECTOR']
-        filt = primaryhdr['FILTER']
-        pupil = primaryhdr['PUPIL']
+        if det in ['GUIDER1','GUIDER2']:
+            filt = 'NA'
+            pupil = 'NA'
+        else:  
+            filt = primaryhdr['FILTER']
+            pupil = primaryhdr['PUPIL']
         
         print('Finding stars --- Detector: {d}, Filter: {f}'.format(f=filt, d=det))
         
@@ -485,8 +503,9 @@ class jwst_photclass(pdastrostatsclass):
         if self.mask is not None: 
              full_mask = np.bitwise_or(full_mask,self.mask)
         bool_mask = np.where(full_mask>0,True,False)
-        
+       
         self.data_bkgsub, std = self.calc_bkg(self.data, mask=bool_mask, var_bkg=var_bkg)
+
         daofind = DAOStarFinder(threshold=threshold * std, fwhm=fwhm_psf, exclude_border=True)
         self.found_stars = daofind(self.data_bkgsub, mask=bool_mask)
         #found_stars = daofind(data_bkgsub)
@@ -545,8 +564,17 @@ class jwst_photclass(pdastrostatsclass):
         if primaryhdr is None: primaryhdr=self.primaryhdr
         if scihdr is None: scihdr=self.scihdr
 
-        if filt is None: filt = primaryhdr['FILTER']
-        if pupil is None: pupil = primaryhdr['PUPIL']
+        det = primaryhdr['DETECTOR']
+        if filt is None:
+            if det in ['GUIDER1','GUIDER2']:
+                filt = 'NA'
+            else:
+                filt = primaryhdr['FILTER']
+        if pupil is None: 
+            if det in ['GUIDER1','GUIDER2']:
+                pupil = 'NA'
+            else:
+                pupil = primaryhdr['PUPIL']
 
         (self.radii_px,
          self.radius_sky_in_px,
@@ -715,87 +743,7 @@ class jwst_photclass(pdastrostatsclass):
         self.t.loc[indices,ycol_idl]=y_idl
   
         return x_idl, y_idl
-    """
-    def match_gaiacat(self,gaia_catname,
-                      max_sep = 1.0,
-                      aperturename=None,
-                      primaryhdr=None, scihdr=None,indices=None):
-        print(f'Matching Gaia catalog {gaia_catname}')
-
-        if primaryhdr is None: primaryhdr=self.primaryhdr
-        if scihdr is None: scihdr=self.scihdr
-        
-        if aperturename is None:
-            aperturename = self.aperture
-
-        gaiacat = pdastroclass()
-        gaiacat.load_spacesep(gaia_catname)
-        gaiacat.t['ID']=gaiacat.getindices()
-
-        # make sure there are no NaNs        
-        ixs_obj = self.ix_not_null(['ra','dec'],indices=indices)
-        # get SkyCoord objects (needed for matching)
-        objcoord = SkyCoord(self.t.loc[ixs_obj,'ra'],self.t.loc[ixs_obj,'dec'], unit='deg')
-
-        
-        # find the x_idl and y_idl range, so that we can cut down the objects from the outside catalog!!
-        xmin = self.t.loc[ixs_obj,'x_idl'].min()
-        xmax = self.t.loc[ixs_obj,'x_idl'].max()
-        ymin = self.t.loc[ixs_obj,'y_idl'].min()
-        ymax = self.t.loc[ixs_obj,'y_idl'].max()
-        print(f'image objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
-
-        #### gaia catalog
-        # get ideal coords into table
-        gaiacat.t['x_idl'], gaiacat.t['y_idl'] = radec_to_idl(gaiacat.t['ra'], 
-                                                              gaiacat.t['dec'],
-                                                              aperturename, 
-                                                              primaryhdr, scihdr)
-        # cut down to the objects that are within the image
-        ixs_cat = gaiacat.ix_inrange('x_idl',xmin-max_sep,xmax+max_sep)
-        ixs_cat = gaiacat.ix_inrange('y_idl',ymin-max_sep,ymax+max_sep,indices=ixs_cat)
-        print(f'Keeping {len(ixs_cat)} out of {len(gaiacat.getindices())} catalog objects')
-        ixs_cat = gaiacat.ix_not_null(['ra','dec'],indices=ixs_cat)
-        print(f'Keeping {len(ixs_cat)}  after removing NaNs from ra/dec')
-
-        if len(ixs_cat) == 0:
-            print(f'WARNING!!!! 0 Gaia sources from catalog within the image bounderies! skipping the rest of the steps calculating x,y of the Gaia sources etc... ')
-            return(0)
-
-        # Get the detector x,y position
-        image_model = ImageModel(self.im)
-        world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
-        gaiacat.t.loc[ixs_cat,'x'], gaiacat.t.loc[ixs_cat,'y'] = world_to_detector(gaiacat.t.loc[ixs_cat,'ra'],gaiacat.t.loc[ixs_cat,'dec'])
-
-        gaiacoord = SkyCoord(gaiacat.t.loc[ixs_cat,'ra'],gaiacat.t.loc[ixs_cat,'dec'], unit='deg')
     
-        #idx, d2d, _ = match_coordinates_sky(self.t.loc[ixs_obj,'coord'], gaiacat.t.loc[ixs_cat,'coord'])
-        idx, d2d, _ = match_coordinates_sky(objcoord,gaiacoord)
-        # ixs_cat4obj has the same length as ixs_obj
-        # for each object in ixs_obj, it contains the index to the gaiacat entry
-        ixs_cat4obj = ixs_cat[idx]
-
-        for cat_col in ['ra','dec','x','y','x_idl','y_idl','ID']:
-            obj_col = f'cat_{cat_col}'
-            vals = list(gaiacat.t.loc[ixs_cat4obj,cat_col])
-            self.t.loc[ixs_obj,obj_col]=vals
-        self.t.loc[ixs_obj,'gaia_mag']=list(gaiacat.t.loc[ixs_cat4obj,'gaia_mag'])
-#        self.t.loc[ixs_obj,'cat_index']=ixs_cat4obj
-        self.t.loc[ixs_obj,'d2d']=d2d.arcsec
-    
-        #self.t.loc[ixs_obj,'dx_idl']=self.t.loc[ixs_obj,'cat_x_idl'] - self.t.loc[ixs_obj,'x_idl']
-        #self.t.loc[ixs_obj,'dy_idl']=self.t.loc[ixs_obj,'cat_y_idl'] - self.t.loc[ixs_obj,'y_idl']
-    
-        #ixs_obj_small_d2d = self.ix_inrange('d2d',None,0.2)
-        #print(f'{len(ixs_obj_small_d2d)} matches out of {len(ixs_obj)}')
-    
-        #self.t.loc[ixs_obj_small_d2d].plot.scatter('x_idl','dy_idl')
-        #self.t.loc[ixs_obj_small_d2d].plot.scatter('x_idl','dx_idl')
-        #self.t.loc[ixs_obj_small_d2d].plot.scatter('y_idl','dy_idl')
-        #self.t.loc[ixs_obj_small_d2d].plot.scatter('y_idl','dx_idl')
-        #self.t.loc[ixs_obj_small_d2d].plot.scatter('x_idl','d2d')
-    """
-
     def init_refcat(self,refcatname,mjd=None,
                     refcat_racol=None,refcat_deccol=None):
         self.refcat = pdastroclass()
@@ -948,7 +896,10 @@ class jwst_photclass(pdastrostatsclass):
 
         return(0)
         
-    def get_photfilename(self,photfilename=None,imagename=None):
+    def get_photfilename(self,photfilename=None,
+                         outrootdir=None,
+                         outsubdir=None,
+                         imagename=None):
         if photfilename is None:
             return(None)
 
@@ -962,44 +913,22 @@ class jwst_photclass(pdastrostatsclass):
             photfilename = re.sub('\.fits$','.phot.txt',imagename)
             if photfilename == imagename:
                 raise RuntimeError(f'could not get photfilename from {self.imagename}')
+                
+        if outrootdir is not None or outsubdir is not None:
+            basename = os.path.basename(photfilename)
+            if outrootdir is not None:
+                outdir=outrootdir
+            else:
+                outdir='.'
+            
+            if outsubdir is not None:
+                outdir+=f'/{outsubdir}'
+
+            photfilename = f'{outdir}/{basename}'
+         
             
         return(photfilename)
-            
-        
-    def run_phot_old(self,imagename, gaia_catname=None, DNunits=True, SNR_min=3.0):
-        print(f'\n### Doing photometry on {imagename}')
-        
-        # load the image, and prepare it. The data and mask are saved in 
-        # self.data and self.mask
-        self.load_image(imagename,DNunits=DNunits,use_dq=True)
-
-        # find the stars, saved in self.found_stars
-        self.find_stars()
-        
-        #aperture phot, saved in self.t
-        self.aperture_phot()
-        
-        # get the indices of good stars
-        ixs_clean = self.clean_phottable(SNR_min=SNR_min)
-        print(f'{len(ixs_clean)} out of {len(self.getindices())} entries remain in photometry table')
-        
-        # calculate the ra,dec
-        self.xy_to_radec(indices=ixs_clean)
-         
-        # calculate the ideal coordinates
-        self.radec_to_idl(indices=ixs_clean)
-        # calculate the ideal coordinates
-        #self.xy_to_idl(indices=ixs_clean,xcol_idl='x_idl_test',ycol_idl='y_idl_test')
-        
-        if gaia_catname is not None:
-            self.match_gaiacat(gaia_catname,indices=ixs_clean)
-        
-        #self.write(self.get_photfilename()+'.all')
-        # save the catalog
-        photfilename = self.get_photfilename()
-        print(f'Saving {photfilename}')
-        self.write(photfilename,indices=ixs_clean)
-        
+                    
     def get_radecinfo_image(self,im=None,nx=None,ny=None):
         if im is None: im=self.im
         image_model = ImageModel(im)
@@ -1026,14 +955,18 @@ class jwst_photclass(pdastrostatsclass):
                  pmflag = True, # apply proper motion
                  pm_median=False,# if pm_median, then the median proper motion is added instead of the individual ones
                  photfilename=None,
+                 outrootdir=None,
+                 outsubdir=None,
+                 overwrite=False,                
                  load_photcat_if_exists=False,
                  rematch_refcat=False,
-                 overwrite=False,
+                 use_dq = False,
                  DNunits=True, SNR_min=3.0):
         print(f'\n### Doing photometry on {imagename}')
 
         # get the photfilename. photfilename='auto' removes fits from image name and replaces it with phot.txt
-        self.photfilename = self.get_photfilename(photfilename,imagename)
+        self.photfilename = self.get_photfilename(photfilename,outrootdir=outrootdir,outsubdir=outsubdir,imagename=imagename)
+        
         # Load photcat if wanted
         do_photometry_flag=True
         photcat_loaded = False
@@ -1053,10 +986,10 @@ class jwst_photclass(pdastrostatsclass):
                     raise RuntimeError(f'photcat {self.photfilename} already exists, exiting! if you want to overwrite, use --overwrite option!')
         else:
             print('NO photometry catalog filename')
-       
+        
         # load the image, and prepare it. The data and mask are saved in 
         # self.data and self.mask
-        self.load_image(imagename,DNunits=DNunits,use_dq=True)
+        self.load_image(imagename,DNunits=DNunits,use_dq=use_dq)
         # only do the photometry if not reloaded
         if do_photometry_flag:
     
@@ -1117,5 +1050,13 @@ if __name__ == '__main__':
     
     phot.verbose=args.verbose
     
-    phot.run_phot(args.image,'./LMC_gaia_DR3.nrcposs',SNR_min=10.0)
+    phot.run_phot(args.image,
+                  refcatname='./LMC_gaia_DR3.nrcposs',
+                  photfilename=args.photfilename,
+                  outrootdir=args.outrootdir,
+                  outsubdir=args.outsubdir,
+                  overwrite=args.overwrite,
+                  DNunits=True,
+                  use_dq=False,
+                  SNR_min=10.0)
     
