@@ -25,8 +25,31 @@ plot_style['good_data']={'style':'o','color':'blue', 'ms':5 ,'alpha':0.5}
 plot_style['cut_data']={'style':'o','color':'red', 'ms':5 ,'alpha':0.3}
 plot_style['do_not_use_data']={'style':'o','color':'gray', 'ms':1 ,'alpha':0.3}
 
-
 def initplot(nrows=1, ncols=1, figsize4subplot=5, **kwargs):
+    print('hello')
+    sp=[]
+    xfigsize=figsize4subplot*ncols
+    yfigsize=figsize4subplot*nrows
+    plt.figure(figsize=(xfigsize,yfigsize))
+    counter=1
+    for row in range(nrows):
+        for col in range(ncols):
+            sp.append(plt.subplot(nrows, ncols, counter,**kwargs))
+            counter+=1
+
+    for i in range(len(sp)):
+        plt.setp(sp[i].get_xticklabels(),'fontsize',12)
+        plt.setp(sp[i].get_yticklabels(),'fontsize',12)
+        sp[i].set_xlabel(sp[i].get_xlabel(),fontsize=14)
+        sp[i].set_ylabel(sp[i].get_ylabel(),fontsize=14)
+        sp[i].set_title(sp[i].get_title(),fontsize=14)
+
+    return(sp)
+
+
+"""
+def initplot(nrows=1, ncols=1, figsize4subplot=5, **kwargs):
+    print('hello')
     sp=[]
     xfigsize=figsize4subplot*ncols
     yfigsize=figsize4subplot*nrows
@@ -75,10 +98,12 @@ def infoplots(phot,ixs_good,dy_plotlim=(-4,4),dx_plotlim=(-4,4)):
     
     phot.t.loc[ixs_good].plot('y','dx',ax=sp[0],ylim=dx_plotlim, ylabel='dx in pixels', **plot_style['good_data'])
     phot.t.loc[ixs_good].plot('x','dy',ax=sp[1],ylim=dy_plotlim, ylabel='dy in pixels', **plot_style['good_data'])
-    phot.t.loc[ixs_good].plot('x','y',ax=sp[2],**plot_style['good_data'])
-    phot.t.loc[ixs_good].plot('sharpness','mag',ax=sp[3],**plot_style['good_data'])
-    phot.t.loc[ixs_good].plot('sharpness','dmag',ax=sp[4],**plot_style['good_data'])
-    phot.t.loc[ixs_good].plot('sharpness','roundness1',ax=sp[5],**plot_style['good_data'])
+    phot.t.loc[ixs_good].plot('x','y',ax=sp[2],**plot_style['good_data'],ylabel='y')
+    phot.t.loc[ixs_good].plot('sharpness','mag',ax=sp[3],**plot_style['good_data'],ylabel='mag')
+    phot.t.loc[ixs_good].plot('sharpness','dmag',ax=sp[4],**plot_style['good_data'],ylabel='dmag')
+    phot.t.loc[ixs_good].plot('sharpness','roundness1',ax=sp[5],**plot_style['good_data'],ylabel='roundness1')
+    
+    sp[4].set_ylim(0.0,0.15)
 
     for i in range(6): sp[i].get_legend().remove()
     
@@ -164,194 +189,6 @@ def dxdy_plot(phot,ixs_selected, sp=None, spi = [0,1,2,3,4,5], title=None):
     return(sp)
 
 
-"""
-# find the maximum value in yvals, its index, and the corresponding value in xvals
-# also indicate if there are multiple entries with the same maximum value (multiple_max=True)
-def find_info_for_maxval(xvals,yvals,use_firstindex_if_multiple=True):
-    # get the max value of the histogram, and its associated bin
-    #print(histo)
-    maxval = np.max(yvals)
-    ixs_max = np.where(yvals==maxval)
-    multiple_max = None
-    if (len(ixs_max[0])==0):
-        raise RuntimeError('BUUUUGGGG!!!!')
-    elif (len(ixs_max[0])>1):
-        if not use_firstindex_if_multiple:
-            raise RuntimeError(f'More than one indices {ixs_max} for maxval={maxval}')
-        #print(f'\nWARNING!! More than one indices {ixs_max} for maxval={maxval}!')
-        multiple_max=True
-        ix_best=ixs_max[0][0]
-    else:
-        multiple_max=False
-        ix_best=ixs_max[0][0]
-    # return ()
-    
-    # get the (rough) fwhm of the peak
-    ix_minus = ix_best-1 
-    if ix_minus<0: ix_minus=0
-    ix_plus = ix_best+1
-    if ix_plus>len(yvals)-1: ix_plus=len(yvals)-1
-    while (ix_minus>0):
-        if yvals[ix_minus]<=0.5*yvals[ix_best]:
-            break
-        ix_minus-=1
-    while (ix_plus<len(yvals)-1):
-        if yvals[ix_plus]<=0.5*yvals[ix_best]:
-            break
-        ix_plus+=1
-    fwhm = xvals[ix_plus]-xvals[ix_minus]
-    
-    return(xvals[ix_best],yvals[ix_best],ix_best,fwhm,multiple_max)
-
-# straight line. Sloppy: use global slope and intercept
-def f(val,slope,intercept):
-    return(val*slope+intercept)
-
-def rotate_d_and_find_binmax(phot,ixs,d_col,col,
-                             Naxis_px, # Nx or Ny, depending on col
-                             d_col_rot='__d_rot_tmp',
-                             binsize=0.5,
-                             bin_weights_flag=True,
-                             slope_min=-10.0/2048.0, # 
-                             slope_max=10.0/2048.0, # 
-                             slope_stepsize=1.0/2048,
-                             showplots=0,
-                             sp=None,
-                             spi=[0,1,2]):
-    rot_results = pdastroclass()
-
-    if bin_weights_flag:
-        phot.t.loc[ixs,'__weights']=10**(-0.4*phot.t.loc[ixs,'mag'])
-    else:
-        phot.t.loc[ixs,'__weights']=None
-        
-    slopes = np.arange(slope_min,slope_max,slope_stepsize)
-    for slope in slopes:
-        #slope = delta4slope_pix/Nx
-        intercept = -0.5*Naxis_px * slope
-
-        phot.t.loc[ixs,d_col_rot] = phot.t.loc[ixs,d_col] - f(phot.t.loc[ixs,col],slope,intercept)
-
-        # get the histogram
-        d_rotated = phot.t.loc[ixs,d_col_rot]
-        bins = np.arange(np.min(d_rotated),np.max(d_rotated),binsize)
-        if bin_weights_flag:
-            histo = np.histogram(d_rotated,bins=bins,weights=phot.t.loc[ixs,'__weights'])
-        else:
-            histo = np.histogram(d_rotated,bins=bins)
-        #sp = plt.subplot(111)
-        #print(histo[1])
-        #sp.plot(histo[1][1:], histo[0], 'ro')
-        # get the max value of the histogram, and its associated bin center. Note that the bincenter is 
-        # the value in the bins (left edge of the bin) + the half of the binsize
-        (bincenter4maxval,maxval,index_maxval,fwhm,multiple_max) = find_info_for_maxval(histo[1]+0.5*binsize,histo[0])
-
-        # Save the results
-        rot_results.newrow({'slope':slope,
-                            'intercept':intercept,
-                            'maxval':maxval,
-                            'index':index_maxval,
-                            'd_bestguess':bincenter4maxval,
-                            'fwhm':fwhm,
-                            'multimax':multiple_max
-                            })
-        # plot it if wanted
-        if showplots>2:
-            plot_rotated(phot,ixs,
-                         d_col,col,
-                         d_col_rot=d_col_rot,
-                         bins=bins,
-                         bin_weights_flag=bin_weights_flag,
-                         histolim = (bincenter4maxval-8,bincenter4maxval+8),
-                         title=f'slope:{slope}')
-        #sys.exit(0)
-
-    # print the results        
-    rot_results.write()
-    
-    # find the best rotation
-    maxmaxval = np.max(rot_results.t['maxval'])
-    ixs_maxmax = np.where(rot_results.t['maxval']==maxmaxval)
-    if (len(ixs_maxmax[0])==0):
-        raise RuntimeError('BUUUUGGGG!!!!')
-    elif (len(ixs_maxmax[0])>1):
-        #print(f'\nWARNING!! more than one bin with maxvalue={maxmaxval}!')
-        multiple_max=True
-        best_index=ixs_maxmax[0][0]
-    else:
-        multiple_max=False
-        best_index=ixs_maxmax[0][0]
-    print('####BEST:')
-    rot_results.write(indices=[best_index])
-    
-    if showplots>1:
-        if sp is None:
-            sp = initplot(1,3)
-        rot_results.t.plot('slope','maxval',ax=sp[spi[0]],color='blue',title=f'{d_col}')
-        rot_results.t.plot.scatter('slope','d_bestguess',ax=sp[spi[1]],color='blue',title=f'{d_col}')
-        rot_results.t.plot.scatter('slope','fwhm',ax=sp[spi[2]],color='blue',title=f'{d_col}')
-        sp[spi[0]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
-        sp[spi[1]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
-        sp[spi[2]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
-    
-    
-    return(rot_results,best_index)
-
-def sigmacut_d_rot(phot,ixs,
-                   d_col,col,
-                   slope,intercept,d_rot_bestguess,
-                   rough_cut_px = 2.5, #This is the first rough cut:  get rid of everything d_rot_bestguess+-rough_cut_px
-                   d_col_rot='__d_rot_tmp',
-                   binsize=0.5,
-                   bin_weights_flag=True,
-                   showplots=0,
-                   sp=None,
-                   spi=[0,1,2]):
-
-    ### recover the slope and intercept of the best binning
-    phot.t.loc[ixs,d_col_rot] = phot.t.loc[ixs,d_col] - f(phot.t.loc[ixs,col],slope,intercept)
-    
-    # Now make the rough cut! only keep data for with dx_rotated within  d_rot_bestguess+-rough_cut_px
-    ixs_roughcut = phot.ix_inrange(d_col_rot,d_rot_bestguess-rough_cut_px,d_rot_bestguess+rough_cut_px,indices=ixs)
-    d_rotated = phot.t.loc[ixs,d_col_rot]
-    
-    if showplots>1:
-        if sp is None:
-            sp=initplot(1,3)
-
-        bins = np.arange(np.min(d_rotated),np.max(d_rotated),binsize)
-        plot_rotated(phot,ixs_roughcut,
-                     d_col,col,
-                     d_col_rot=d_col_rot,
-                     sp=sp,
-                     spi=spi[:2],
-                     bins=bins,
-                     bin_weights_flag=bin_weights_flag,
-                     histolim = (d_rot_bestguess-3*rough_cut_px,d_rot_bestguess+3*rough_cut_px),
-                     title=f'First rough cut: {d_rot_bestguess:.3f}+-{rough_cut_px:.3f} for slope={slope:.6f}')
-
-    print('\n####################\n### d_rotated cut')
-    #ixs_clean4average = phot_clear.ix_inrange(d_col,0,3,indices=ixs_clear_cut)
-    phot.calcaverage_sigmacutloop(d_col_rot,verbose=3,indices=ixs_roughcut,percentile_cut_firstiteration=65)
-    print(phot.statstring())
-    ixs_cut = phot.statparams['ix_good']
-
-    if showplots>1:
-        #infoplots(phot,ixs_cut,ixs_roughcut,dy_plotlim=dy_plotlim,dx_plotlim=dx_plotlim)
-        #sp=initplot(1,2)
-
-        phot.t.loc[ixs_roughcut].plot.scatter(col,d_col_rot,ax=sp[spi[2]],color='red')
-        phot.t.loc[ixs_cut].plot.scatter(col,d_col_rot,ax=sp[spi[2]],color='blue',
-                                         ylabel='dx in pixels',
-                                         title=f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left')
-        
-#        plot_rotated(phot,ixs_cut,
-#                     d_col,col,
-#                     d_col_rot=d_col_rot,
-#                     histolim = (d_rot_bestguess-rough_cut_px,d_rot_bestguess+rough_cut_px),
-#                     title=f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left')
-    return(ixs_cut,ixs_roughcut)
-"""
 
 # find the maximum value in yvals, its index, and the corresponding value in xvals
 # also indicate if there are multiple entries with the same maximum value (multiple_max=True)
@@ -476,7 +313,353 @@ def rotate_d_and_find_binmax(phot,ixs,d_col,col,
     if showplots>1:
         if sp is None:
             sp = initplot(1,3)
-        rot_results.t.plot('slope','maxval',ax=sp[spi[0]],color='blue',title=f'{d_col}')
+        rot_results.t.plot('slope','maxval',ax=sp[spi[0]],color='blue',title=f'{d_col}',ylabel='histogran peak value')
+        rot_results.t.plot.scatter('slope','d_bestguess',ax=sp[spi[1]],color='blue',title=f'{d_col}')
+        rot_results.t.plot.scatter('slope','fwhm',ax=sp[spi[2]],color='blue',title=f'{d_col}')
+        sp[spi[0]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
+        sp[spi[1]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
+        sp[spi[2]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
+    
+    
+    return(rot_results,best_index)
+
+def sigmacut_d_rot(phot,ixs,
+                   d_col,col,
+                   slope,intercept,d_rot_bestguess,
+                   rough_cut_px = 2.5, #This is the first rough cut:  get rid of everything d_rot_bestguess+-rough_cut_px
+                   d_col_rot='d_rot_tmp',
+                   binsize=0.5,
+                   bin_weights_flag=True,
+                   showplots=0,
+                   sp=None,
+                   spi=[0,1,2]):
+
+    ### recover the slope and intercept of the best binning
+    phot.t.loc[ixs,d_col_rot] = phot.t.loc[ixs,d_col] - f(phot.t.loc[ixs,col],slope,intercept)
+    
+    # Now make the rough cut! only keep data for with dx_rotated within  d_rot_bestguess+-rough_cut_px
+    ixs_roughcut = phot.ix_inrange(d_col_rot,d_rot_bestguess-rough_cut_px,d_rot_bestguess+rough_cut_px,indices=ixs)
+    d_rotated = phot.t.loc[ixs,d_col_rot]
+    
+    if showplots>1:
+        if sp is None:
+            sp=initplot(1,3)
+
+        bins = np.arange(np.min(d_rotated),np.max(d_rotated),binsize)
+        plot_rotated(phot,ixs_roughcut,
+                     d_col,col,
+                     d_col_rot=d_col_rot,
+                     sp=sp,
+                     spi=spi[:2],
+                     bins=bins,
+                     bin_weights_flag=bin_weights_flag,
+                     histolim = (d_rot_bestguess-3*rough_cut_px,d_rot_bestguess+3*rough_cut_px),
+                     title=f'First rough cut: {d_rot_bestguess:.3f}+-{rough_cut_px:.3f} for slope={slope:.6f}')
+
+    print('\n####################\n### d_rotated cut')
+    #ixs_clean4average = phot_clear.ix_inrange(d_col,0,3,indices=ixs_clear_cut)
+    phot.calcaverage_sigmacutloop(d_col_rot,verbose=3,indices=ixs_roughcut,percentile_cut_firstiteration=65)
+    print(phot.statstring())
+    ixs_cut = phot.statparams['ix_good']
+
+    if showplots>1:
+        title = f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left\n'
+        title += f'mean = {phot.statparams["mean"]:.3f} px, stdev = {phot.statparams["stdev"]:.3f} px'
+        phot.t.loc[AnotB(ixs_roughcut,ixs_cut)].plot(col,d_col_rot,style='o',ax=sp[spi[2]],color='red', ms=5 ,alpha=0.3,title=title)
+        phot.t.loc[ixs_cut].plot(col,d_col_rot,style='o',ax=sp[spi[2]],color='blue', 
+                                 ms=5 ,alpha=0.3,ylabel=f'{d_col} [pixels]',
+                                 title=title)
+        if phot.ixs_notuse is not None:
+            phot.t.loc[phot.ixs_notuse].plot(col,d_col_rot,style='o',ax=sp[spi[2]],color='gray', ms=1,alpha=0.5)
+        sp[spi[2]].get_legend().remove()
+    
+        # set the appropriate y-axis limits
+        (ylim_min,ylim_max) = (phot.t.loc[ixs_roughcut,d_col_rot].min(),phot.t.loc[ixs_roughcut,d_col_rot].max())
+        ylim_min -= 0.1*(ylim_max-ylim_min)
+        ylim_max += 0.1*(ylim_max-ylim_min)
+        sp[spi[2]].set_ylim(ylim_min,ylim_max)
+        #sp[spi[2]].set_ylim(sp[spi[2]].get_ylim(),(ylim_min,ylim_max))
+        
+        
+        #phot.t.loc[ixs_roughcut].plot.scatter(col,d_col_rot,ax=sp[spi[2]],color='red')
+        #phot.t.loc[ixs_cut].plot.scatter(col,d_col_rot,ax=sp[spi[2]],color='blue',
+        #                                 ylabel='dx in pixels',
+        #                                 title=f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left')
+    return(ixs_cut,ixs_roughcut)
+    """
+
+# These are the info plots to check out dx, dy for good and bad detections
+def infoplots(phot,ixs_good,dy_plotlim=(-4,4),dx_plotlim=(-4,4)):
+    sp=initplot(2,3)
+
+    if phot.ixs_notuse is not None:
+        phot.t.loc[phot.ixs_notuse].plot('y','dx',ax=sp[0],ylim=dx_plotlim, **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('y','dx',ax=sp[0],ylim=dx_plotlim, **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('x','dy',ax=sp[1],ylim=dy_plotlim, **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('x','y',ax=sp[2],**plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('sharpness','mag',ax=sp[3],**plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('sharpness','dmag',ax=sp[4],**plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('sharpness','roundness1',ax=sp[5],**plot_style['do_not_use_data'])
+
+    if phot.ixs_use is not None:
+        ixs_cut = AnotB(phot.ixs_use,ixs_good)
+        print(len(ixs_good),len(ixs_cut),len(phot.ixs_use))
+        phot.t.loc[ixs_cut].plot('y','dx',ax=sp[0],ylim=dx_plotlim, **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('y','dx',ax=sp[0],ylim=dx_plotlim, **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('x','dy',ax=sp[1],ylim=dy_plotlim, **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('x','y',ax=sp[2],**plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('sharpness','mag',ax=sp[3],**plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('sharpness','dmag',ax=sp[4],**plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('sharpness','roundness1',ax=sp[5],**plot_style['cut_data'])
+
+
+    
+    phot.t.loc[ixs_good].plot('y','dx',ax=sp[0],ylim=dx_plotlim, ylabel='dx in pixels', **plot_style['good_data'])
+    phot.t.loc[ixs_good].plot('x','dy',ax=sp[1],ylim=dy_plotlim, ylabel='dy in pixels', **plot_style['good_data'])
+    phot.t.loc[ixs_good].plot('x','y',ax=sp[2],**plot_style['good_data'],ylabel='y')
+    phot.t.loc[ixs_good].plot('sharpness','mag',ax=sp[3],**plot_style['good_data'],ylabel='mag')
+    phot.t.loc[ixs_good].plot('sharpness','dmag',ax=sp[4],**plot_style['good_data'],ylabel='dmag')
+    phot.t.loc[ixs_good].plot('sharpness','roundness1',ax=sp[5],**plot_style['good_data'],ylabel='roundness1')
+    
+    sp[4].set_ylim(0.0,0.15)
+
+    for i in range(6): sp[i].get_legend().remove()
+    
+    plt.tight_layout()
+    return(sp)
+
+# plot the rotated dx or dy versus the original one
+def plot_rotated(phot,ixs,d_col,col,
+                 d_col_rot='d_rot_tmp',
+                 sp=None,
+                 spi=[0,1],
+                 histolim=(-20,20),
+                 bins=None,
+                 bin_weights_flag=False,
+                 title=None):
+    if sp == None:
+        sp=initplot(1,2)
+
+    if phot.ixs_notuse is not None:
+        phot.t.loc[phot.ixs_notuse].plot(col,d_col_rot,ax=sp[spi[0]],**plot_style['do_not_use_data'])
+    phot.t.loc[ixs].plot(col,d_col,ax=sp[spi[0]],ylim=histolim,title=title,**plot_style['cut_data'])
+    phot.t.loc[ixs].plot(col,d_col_rot,ax=sp[spi[0]],ylim=histolim,ylabel=f'{d_col} [pixels]',**plot_style['good_data'])
+    sp[spi[0]].get_legend().remove()
+
+    
+    if bins is not None:
+        if bin_weights_flag:
+            phot.t.loc[ixs,d_col_rot].plot.hist(ax=sp[spi[1]],bins=bins,
+                                                weights=phot.t.loc[ixs,'__weights'],
+                                                xlim=histolim,color='blue')
+        else:
+            phot.t.loc[ixs,d_col_rot].plot.hist(ax=sp[spi[1]],bins=bins,xlim=histolim,color='blue')
+        sp[spi[1]].set_xlabel(f'rotated {d_col}')
+        #sp[spi[1]].get_legend().remove()
+    return(sp)
+
+def dxdy_plot(phot,ixs_selected, sp=None, spi = [0,1,4,5,8,9,2,6,10,3,7,11], title=None,
+              refcat_mainfilter=None,refcat_mainfilter_err=None,refcat_maincolor=None):
+    if sp is None: sp=initplot(3,4)
+
+    dx_median = phot.t.loc[ixs_selected,'dx'].median()
+    dy_median = phot.t.loc[ixs_selected,'dy'].median()
+
+    dlim_big = 15
+    #dlim_small= 1
+    dx_ylim_big = (dx_median-dlim_big,dx_median+dlim_big)
+    dy_ylim_big = (dy_median-dlim_big,dy_median+dlim_big)
+    #dx_ylim_small = (dx_median-dlim_small,dx_median+dlim_small)
+    #dy_ylim_small = (dy_median-dlim_small,dy_median+dlim_small)
+
+    print(phot.t.columns)
+    if (refcat_mainfilter is not None):
+        if (refcat_mainfilter in phot.t.columns):
+            phot.t['delta_mag'] = phot.t['mag'] - phot.t[refcat_mainfilter]
+        else:
+            print(f'Warning! cannot make plot with reference filter {refcat_mainfilter}, since it is not a column in the table')
+    
+    
+    if phot.ixs_notuse is not None:
+        phot.t.loc[phot.ixs_notuse].plot('y','dx',ax=sp[spi[0]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('x','dy',ax=sp[spi[1]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('y','dx',ax=sp[spi[2]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('x','dx',ax=sp[spi[3]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('x','dy',ax=sp[spi[4]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('y','dy',ax=sp[spi[5]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('x','y' ,ax=sp[spi[6]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('sharpness','mag',ax=sp[spi[7]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot('sharpness','roundness1',ax=sp[spi[8]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot(refcat_maincolor,'delta_mag',ax=sp[spi[9]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot(refcat_maincolor,refcat_mainfilter,ax=sp[spi[10]], **plot_style['do_not_use_data'])
+        phot.t.loc[phot.ixs_notuse].plot(refcat_mainfilter,'mag',ax=sp[spi[11]], **plot_style['do_not_use_data'])
+
+    if phot.ixs_use is not None:
+        ixs_cut = AnotB(phot.ixs_use,ixs_selected)
+        phot.t.loc[ixs_cut].plot('y','dx',ax=sp[spi[0]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('x','dy',ax=sp[spi[1]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('y','dx',ax=sp[spi[2]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('x','dx',ax=sp[spi[3]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('x','dy',ax=sp[spi[4]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('y','dy',ax=sp[spi[5]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('x','y' ,ax=sp[spi[6]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('sharpness','mag',ax=sp[spi[7]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot('sharpness','roundness1',ax=sp[spi[8]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot(refcat_maincolor,'delta_mag',ax=sp[spi[9]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot(refcat_maincolor,refcat_mainfilter,ax=sp[spi[10]], **plot_style['cut_data'])
+        phot.t.loc[ixs_cut].plot(refcat_mainfilter,'mag',ax=sp[spi[11]], **plot_style['cut_data'])
+        
+    phot.t.loc[ixs_selected].plot('y','dx',ylim=dx_ylim_big,ax=sp[spi[0]],ylabel='dx in pixels',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot('x','dy',ylim=dy_ylim_big,ax=sp[spi[1]],ylabel='dy in pixels',title=title, **plot_style['good_data'])
+
+    (dx_min,dx_max) = (phot.t.loc[ixs_selected,'dx'].min(),phot.t.loc[ixs_selected,'dx'].max())
+    dx_ylim_small = (dx_min - 1.0*(dx_max - dx_min), dx_max + 1.0*(dx_max - dx_min))
+    phot.t.loc[ixs_selected].plot('y','dx',ylim=dx_ylim_small,ax=sp[spi[2]],ylabel='dx in pixels',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot('x','dx',ylim=dx_ylim_small,ax=sp[spi[3]],ylabel='dx in pixels',title=title, **plot_style['good_data'])
+
+    (dy_min,dy_max) = (phot.t.loc[ixs_selected,'dy'].min(),phot.t.loc[ixs_selected,'dy'].max())
+    dy_ylim_small = (dy_min - 1.0*(dy_max - dy_min), dy_max + 1.0*(dy_max - dy_min))
+    phot.t.loc[ixs_selected].plot('x','dy',ylim=dy_ylim_small,ax=sp[spi[4]],ylabel='dy in pixels',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot('y','dy',ylim=dy_ylim_small,ax=sp[spi[5]],ylabel='dy in pixels',title=title, **plot_style['good_data'])
+
+    phot.t.loc[ixs_selected].plot('x','y',ax=sp[spi[6]],ylabel='y',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot('sharpness','mag',ax=sp[spi[7]],ylabel='mag',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot('sharpness','roundness1',ax=sp[spi[8]],ylabel='roundness1',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot(refcat_maincolor,'delta_mag',ax=sp[spi[9]],ylabel=f'mag - {refcat_mainfilter}',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot(refcat_maincolor,refcat_mainfilter,ax=sp[spi[10]],ylabel=f'{refcat_mainfilter}',title=title, **plot_style['good_data'])
+    phot.t.loc[ixs_selected].plot(refcat_mainfilter,'mag',ax=sp[spi[11]],ylabel='mag',title=title, **plot_style['good_data'])
+
+    for i in range(12): 
+        if sp[spi[i]].get_legend() is not None:
+            sp[spi[i]].get_legend().remove()
+
+    plt.tight_layout()
+    return(sp)
+
+# find the maximum value in yvals, its index, and the corresponding value in xvals
+# also indicate if there are multiple entries with the same maximum value (multiple_max=True)
+def find_info_for_maxval(xvals,yvals,use_firstindex_if_multiple=True):
+    # get the max value of the histogram, and its associated bin
+    #print(histo)
+    maxval = np.max(yvals)
+    ixs_max = np.where(yvals==maxval)
+    multiple_max = None
+    if (len(ixs_max[0])==0):
+        raise RuntimeError('BUUUUGGGG!!!!')
+    elif (len(ixs_max[0])>1):
+        if not use_firstindex_if_multiple:
+            raise RuntimeError(f'More than one indices {ixs_max} for maxval={maxval}')
+        #print(f'\nWARNING!! More than one indices {ixs_max} for maxval={maxval}!')
+        multiple_max=True
+        ix_best=ixs_max[0][0]
+    else:
+        multiple_max=False
+        ix_best=ixs_max[0][0]
+    # return ()
+    
+    # get the (rough) fwhm of the peak
+    ix_minus = ix_best-1 
+    if ix_minus<0: ix_minus=0
+    ix_plus = ix_best+1
+    if ix_plus>len(yvals)-1: ix_plus=len(yvals)-1
+    while (ix_minus>0):
+        if yvals[ix_minus]<=0.5*yvals[ix_best]:
+            break
+        ix_minus-=1
+    while (ix_plus<len(yvals)-1):
+        if yvals[ix_plus]<=0.5*yvals[ix_best]:
+            break
+        ix_plus+=1
+    fwhm = xvals[ix_plus]-xvals[ix_minus]
+    
+    return(xvals[ix_best],yvals[ix_best],ix_best,fwhm,multiple_max)
+
+# straight line. Sloppy: use global slope and intercept
+def f(val,slope,intercept):
+    return(val*slope+intercept)
+
+def rotate_d_and_find_binmax(phot,ixs,d_col,col,
+                             Naxis_px, # Nx or Ny, depending on col
+                             d_col_rot='d_rot_tmp',
+                             binsize=0.5,
+                             bin_weights_flag=True,
+                             slope_min=-10.0/2048.0, # 
+                             slope_max=10.0/2048.0, # 
+                             slope_stepsize=1.0/2048,
+                             showplots=0,
+                             sp=None,
+                             spi=[0,1,2]):
+    rot_results = pdastroclass()
+
+    if bin_weights_flag:
+        phot.t.loc[ixs,'__weights']=10**(-0.4*phot.t.loc[ixs,'mag'])
+    else:
+        phot.t.loc[ixs,'__weights']=None
+        
+    slopes = np.arange(slope_min,slope_max,slope_stepsize)
+    for slope in slopes:
+        #slope = delta4slope_pix/Nx
+        intercept = -0.5*Naxis_px * slope
+
+        #phot.t.loc[ixs,d_col_rot] = phot.t.loc[ixs,d_col] - f(phot.t.loc[ixs,col],slope,intercept)
+        phot.t[d_col_rot] = phot.t[d_col] - f(phot.t[col],slope,intercept)
+
+        # get the histogram
+        d_rotated = phot.t.loc[ixs,d_col_rot]
+        bins = np.arange(np.min(d_rotated),np.max(d_rotated),binsize)
+        if bin_weights_flag:
+            histo = np.histogram(d_rotated,bins=bins,weights=phot.t.loc[ixs,'__weights'])
+        else:
+            histo = np.histogram(d_rotated,bins=bins)
+        #sp = plt.subplot(111)
+        #print(histo[1])
+        #sp.plot(histo[1][1:], histo[0], 'ro')
+        # get the max value of the histogram, and its associated bin center. Note that the bincenter is 
+        # the value in the bins (left edge of the bin) + the half of the binsize
+        (bincenter4maxval,maxval,index_maxval,fwhm,multiple_max) = find_info_for_maxval(histo[1]+0.5*binsize,histo[0])
+
+        # Save the results
+        rot_results.newrow({'slope':slope,
+                            'intercept':intercept,
+                            'maxval':maxval,
+                            'index':index_maxval,
+                            'd_bestguess':bincenter4maxval,
+                            'fwhm':fwhm,
+                            'multimax':multiple_max
+                            })
+        # plot it if wanted
+        if showplots>2:
+            plot_rotated(phot,ixs,
+                         d_col,col,
+                         d_col_rot=d_col_rot,
+                         bins=bins,
+                         bin_weights_flag=bin_weights_flag,
+                         histolim = (bincenter4maxval-8,bincenter4maxval+8),
+                         title=f'slope:{slope}')
+        #sys.exit(0)
+
+    # print the results        
+    rot_results.write()
+    
+    # find the best rotation
+    maxmaxval = np.max(rot_results.t['maxval'])
+    ixs_maxmax = np.where(rot_results.t['maxval']==maxmaxval)
+    if (len(ixs_maxmax[0])==0):
+        raise RuntimeError('BUUUUGGGG!!!!')
+    elif (len(ixs_maxmax[0])>1):
+        #print(f'\nWARNING!! more than one bin with maxvalue={maxmaxval}!')
+        multiple_max=True
+        best_index=ixs_maxmax[0][0]
+    else:
+        multiple_max=False
+        best_index=ixs_maxmax[0][0]
+    print('####BEST:')
+    rot_results.write(indices=[best_index])
+    
+    if showplots>1:
+        if sp is None:
+            sp = initplot(1,3)
+        rot_results.t.plot('slope','maxval',ax=sp[spi[0]],color='blue',title=f'{d_col}',ylabel='histogran peak value')
         rot_results.t.plot.scatter('slope','d_bestguess',ax=sp[spi[1]],color='blue',title=f'{d_col}')
         rot_results.t.plot.scatter('slope','fwhm',ax=sp[spi[2]],color='blue',title=f'{d_col}')
         sp[spi[0]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
@@ -550,6 +733,7 @@ def sigmacut_d_rot(phot,ixs,
         #                                 title=f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left')
     return(ixs_cut,ixs_roughcut)
 
+
 class jwst_wcs_align(apply_distortion_singleim):
     def __init__(self):
         apply_distortion_singleim.__init__(self)
@@ -599,7 +783,7 @@ class jwst_wcs_align(apply_distortion_singleim):
 
     # make some rough cuts on dmag, d2d, and Nbright
     # sets phot.ixs_use and phot.ixs_notuse
-    def initial_cut(self, phot=None, refcatshort='gaia',d2d_max=None,dmag_max=None,Nbright=None, ixs=None):
+    def initial_cut(self, phot=None, d2d_max=None,dmag_max=None,Nbright=None, ixs=None):
         if phot is None:
             phot=self.phot
             
@@ -622,9 +806,9 @@ class jwst_wcs_align(apply_distortion_singleim):
     def run_align2refcat(self,imfilename,
                          phot=None,
                          ixs=None,
-                         refcat_short=None,
-                         racol=None,
-                         deccol=None,
+#                         refcat_short=None,
+                         refcat_racol=None,
+                         refcat_deccol=None,
                          xcol='x',
                          ycol='y',
                          outdir=None,overwrite=False, 
@@ -637,15 +821,16 @@ class jwst_wcs_align(apply_distortion_singleim):
         if outdir is None:
             outdir=self.outdir
             
-        if (racol is None) or (deccol is None): 
-            if refcat_short is None:
-                refcat_short = phot.refcat.short
-                if refcat_short is None:
-                    raise RuntimeError('need the refcat shortname to identify ra,dec columns!')
-            racol = f'{refcat_short}_ra'
-            deccol = f'{refcat_short}_dec'
+#        if (racol is None) or (deccol is None): 
+#            if refcat_short is None:
+#                refcat_short = phot.refcat.short
+#                if refcat_short is None:
+#                    raise RuntimeError('need the refcat shortname to identify ra,dec columns!')
+#            racol = f'{refcat_short}_ra'
+#            deccol = f'{refcat_short}_dec'
             
-
+        if refcat_racol is None: refcat_racol = phot.refcat_racol
+        if refcat_deccol is None: refcat_deccol = phot.refcat_deccol
 
         tweakreg = tweakreg_hack.TweakRegStep()
         cal_image = datamodels.open(imfilename)
@@ -697,8 +882,8 @@ class jwst_wcs_align(apply_distortion_singleim):
         if self.verbose: print(f'{len(ixs)} matches are passed to tweakreg {tweakreg.fitgeometry} fitting')
         t =  Table.from_pandas(phot.t.loc[ixs])
         tweakreg.refcat = t
-        tweakreg.ref_racol = racol
-        tweakreg.ref_deccol = deccol
+        tweakreg.ref_racol = refcat_racol
+        tweakreg.ref_deccol = refcat_deccol
         
         ### Provide your own source catalog, to be used in place of the default daofinder stuff. If you actually have a list
         ### of images, it's okay to provide a source catalog for each. 
@@ -707,7 +892,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         tweakreg.source_xcol = xcol
         tweakreg.source_ycol = ycol
         
-        if self.verbose: print(f'Fitting tweakreg fitgeometry={tweakreg.fitgeometry} to xy={xcol},{ycol} to ra,dec={racol},{deccol}')
+        if self.verbose: print(f'Fitting tweakreg fitgeometry={tweakreg.fitgeometry} to xy={xcol},{ycol} to ra,dec={refcat_racol},{refcat_deccol}')
         
         cal_data = [datamodels.open(cal_image)]
         tweakreg.run(cal_data)
@@ -722,6 +907,10 @@ class jwst_wcs_align(apply_distortion_singleim):
 
     def find_good_refcat_matches(self,
                                  phot=None,
+                                 refcat_xcol=None,
+                                 refcat_ycol=None,
+                                 xcol='x',
+                                 ycol='y',
                                  d2d_max = None,
                                  dmag_max = 0.1,
                                  Nbright=None,
@@ -746,18 +935,20 @@ class jwst_wcs_align(apply_distortion_singleim):
         if (saveplots or savephottable) and (outbasename is None):
             raise RuntimeError('Trying to save plots and/or phot tables, but outbasename is None!')
 
+        if refcat_xcol is None: refcat_xcol = phot.refcat_xcol
+        if refcat_ycol is None: refcat_ycol = phot.refcat_ycol
+
         Nx = phot.scihdr['NAXIS1']
         Ny = phot.scihdr['NAXIS2']
         
         # Calculate dx and dy
-        phot.t['dx'] = phot.t[f'{phot.refcat.short}_x'] - phot.t['x']
-        phot.t['dy'] = phot.t[f'{phot.refcat.short}_y'] - phot.t['y']
+        phot.t['dx'] = phot.t[refcat_xcol] - phot.t[xcol]
+        phot.t['dy'] = phot.t[refcat_ycol] - phot.t[ycol]
         
         # do some first very rough cuts.
         # sets phot.ixs_use and phot.ixs_notuse
         # returns phot.ixs_use
         ixs = self.initial_cut(phot=phot,
-                               refcatshort=phot.refcat.short,
                                d2d_max=d2d_max,
                                dmag_max=dmag_max,
                                Nbright=Nbright,
@@ -907,6 +1098,10 @@ class jwst_wcs_align(apply_distortion_singleim):
     def update_phottable_final_wcs(self,tweakregfilename,
                                    ixs_bestmatch,
                                    phot=None,
+                                   refcat_racol=None,
+                                   refcat_deccol=None,
+                                   refcat_xcol=None,
+                                   refcat_ycol=None,                                   
                                    showplots=1,
                                    saveplots=1,
                                    savephottable=1,
@@ -916,9 +1111,19 @@ class jwst_wcs_align(apply_distortion_singleim):
         if phot is None:
             phot=self.phot
 
+        if refcat_racol is None: refcat_racol = phot.refcat_racol
+        if refcat_deccol is None: refcat_deccol = phot.refcat_deccol
+        if refcat_xcol is None: refcat_xcol = phot.refcat_xcol
+        if refcat_ycol is None: refcat_ycol = phot.refcat_ycol
+
+
         # show or save dxdy pre WCS correction
         if showplots>=0 or saveplots:
-            dxdy_plot(phot, ixs_bestmatch,title='pre WCS correction')
+            dxdy_plot(phot, ixs_bestmatch,title='pre WCS correction',
+                      refcat_mainfilter=phot.refcat_mainfilter,
+                      refcat_mainfilter_err=phot.refcat_mainfilter_err,
+                      refcat_maincolor=phot.refcat_maincolor
+                     )
             if saveplots:
                 outfilename = f'{outbasename}.phot.prewcs.png'
                 if os.path.isfile(outfilename):
@@ -927,19 +1132,19 @@ class jwst_wcs_align(apply_distortion_singleim):
                 plt.savefig(outfilename)
 
 
-        racol=f'{phot.refcat.short}_ra'
-        deccol=f'{phot.refcat.short}_dec'
-        xcol=f'{phot.refcat.short}_x'
-        ycol=f'{phot.refcat.short}_y'
+        #racol=f'{phot.refcat.short}_ra'
+        #deccol=f'{phot.refcat.short}_dec'
+        #xcol=f'{phot.refcat.short}_x'
+        #ycol=f'{phot.refcat.short}_y'
 
-        phot.t.drop(columns=['dx','dy',xcol,ycol,f'{phot.refcat.short}_x_idl',f'{phot.refcat.short}_y_idl'],inplace=True)    
+        phot.t.drop(columns=['dx','dy',refcat_xcol,refcat_ycol,f'{phot.refcatshort}_x_idl',f'{phot.refcatshort}_y_idl'],inplace=True)    
             
         image_model = datamodels.ImageModel(tweakregfilename)
         world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
-        phot.t[xcol], phot.t[ycol] = world_to_detector(phot.t[racol],phot.t[deccol])
+        phot.t[refcat_xcol], phot.t[refcat_ycol] = world_to_detector(phot.t[refcat_racol],phot.t[refcat_deccol])
         
-        phot.t['dx'] = phot.t[xcol] - phot.t['x']
-        phot.t['dy'] = phot.t[ycol] - phot.t['y']
+        phot.t['dx'] = phot.t[refcat_xcol] - phot.t['x']
+        phot.t['dy'] = phot.t[refcat_ycol] - phot.t['y']
 
         if savephottable:
             outfilename = f'{outbasename}.good.phot.txt'
@@ -964,7 +1169,10 @@ class jwst_wcs_align(apply_distortion_singleim):
 
         # show or save dxdy post WCS correction
         if showplots>=0 or saveplots:
-            dxdy_plot(phot, ixs_bestmatch,title='after WCS correction')
+            dxdy_plot(phot, ixs_bestmatch,title='after WCS correction',
+                      refcat_mainfilter=phot.refcat_mainfilter,
+                      refcat_mainfilter_err=phot.refcat_mainfilter_err,
+                      refcat_maincolor=phot.refcat_maincolor)
             if saveplots:
                 outfilename = f'{outbasename}.phot.finalwcs.png'
                 if os.path.isfile(outfilename):
@@ -1023,11 +1231,11 @@ class jwst_wcs_align(apply_distortion_singleim):
                               rematch_refcat=rematch_refcat,
                               overwrite=overwrite,
                               SNR_min=SNR_min)
-        
+
         matching_outbasename = re.sub('\.fits$','',calimname)
         if (matching_outbasename == calimname): raise RuntimeError(f'Could not remove .fits from {calimname}')        
 
-        ixs_match= self.find_good_refcat_matches(d2d_max = d2d_max,
+        ixs_bestmatch= self.find_good_refcat_matches(d2d_max = d2d_max,
                                                  dmag_max = dmag_max,
                                                  Nbright = Nbright,
                                                  showplots=showplots,
@@ -1036,11 +1244,11 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                  outbasename=matching_outbasename
                                                  )        
 
-        (runflag,tweakregfilename) = self.run_align2refcat(calimname,ixs=ixs_match,
+        (runflag,tweakregfilename) = self.run_align2refcat(calimname,ixs=ixs_bestmatch,
                                                            overwrite=overwrite,skip_if_exists=skip_if_exists)
         
         self.update_phottable_final_wcs(tweakregfilename,
-                                        ixs_bestmatch = ixs_match,
+                                        ixs_bestmatch = ixs_bestmatch,
                                         showplots=showplots,
                                         saveplots=saveplots,
                                         savephottable=savephottable,

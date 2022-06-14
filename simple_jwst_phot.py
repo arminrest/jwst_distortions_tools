@@ -37,7 +37,7 @@ from astropy.coordinates import SkyCoord, match_coordinates_sky
 
 
 def get_GAIA_sources_NP(f,pm=True,radius_factor=2):
-    """Return a GAIA catalog/table that is location and time matched to an observation.
+    """"Nor Pirzkal: Return a GAIA catalog/table that is location and time matched to an observation.
     It applies the GAIA proper motion by default (pm=True).
     The (x,y) pixel coordinates of the GAIA source are also returned in  'x' and 'y' column.
     radius_factor is 2 by default and hence about twice that of the FOV but can be set."""
@@ -83,7 +83,7 @@ def get_GAIA_sources(ra0,dec0,radius_deg,radius_factor=1.1,
                      rename_mag_colnames=True, # renames from f'phot_{filt}_mean_mag' to f'{filt}'
                      remove_null=True,
                      columns=['source_id','ref_epoch','ra','ra_error','dec','dec_error','pmra','pmra_error','pmdec','pmdec_error',
-                              'g','g_err','bp','bp_err','rp','rp_err','bp_rp','bp_g','g_rp']):
+                              'g','g_err','bp','bp_err','rp','rp_err','bp_rp','bp_g','g_rp','bp_rp_err','bp_g_err','g_rp_err']):
 #                     columns=['source_id','ref_epoch','ra','ra_error','dec','dec_error','pmra','pmra_error','pmdec','pmdec_error',
 #                              'phot_g_mean_mag','phot_bp_mean_mag','phot_rp_mean_mag','bp_rp','bp_g','g_rp','phot_g_mean_flux','phot_g_mean_flux_error','phot_bp_mean_flux','phot_bp_mean_flux_error','phot_rp_mean_flux','phot_rp_mean_flux_error']):
     if datarelease is None:
@@ -148,6 +148,10 @@ def get_GAIA_sources(ra0,dec0,radius_deg,radius_factor=1.1,
             fluxcol = f'phot_{filt}_mean_flux'
             dfluxcol = f'{fluxcol}_error'
             df[f'{filt}_err'] =  2.5 / math.log(10.0) * df[dfluxcol] / df[fluxcol]
+
+        for (filt1,filt2) in [('bp','rp'),('bp','g'),('g','rp')]:
+            df[f'{filt1}_{filt2}'] = df[f'{filt1}'] - df[f'{filt2}']
+            df[f'{filt1}_{filt2}_err'] = np.sqrt(np.square(df[f'{filt1}']) - np.square(df[f'{filt2}']))
 
     if remove_null:
         ixs = df.index.values
@@ -283,6 +287,13 @@ class jwst_photclass(pdastrostatsclass):
         
         self.instrument = None
         self.aperture = None
+        
+        self.refcat_short = None
+        self.refcat_racol = None
+        self.refcat_deccol = None
+        self.refcat_xcol = None
+        self.refcat_ycol = None
+
         
         #self.phot=pdastroclass()
 
@@ -744,6 +755,7 @@ class jwst_photclass(pdastrostatsclass):
   
         return x_idl, y_idl
     
+
     def init_refcat(self,refcatname,mjd=None,
                     refcat_racol=None,refcat_deccol=None):
         self.refcat = pdastroclass()
@@ -754,6 +766,9 @@ class jwst_photclass(pdastrostatsclass):
         self.refcat.deccol = None
         self.refcat.short = None
         self.refcat.cols2copy = []
+        self.refcat.mainfilter = None
+        self.refcat.mainfilter_err = None
+        self.refcat.maincolor = None
         
         if refcatname.lower()=='gaia':
             if mjd is not None:
@@ -765,6 +780,9 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.name = refcatname
             self.refcat.short = 'gaia'
             self.refcat.cols2copy = ['ra_error','dec_error','g','g_err','rp','rp_err','g_rp']
+            self.refcat.mainfilter = 'g'
+            self.refcat.mainfilter_err = 'g_err'
+            self.refcat.maincolor = 'g_rp'
         elif os.path.basename(refcatname)=='LMC_gaia_DR3.nrcposs':
             self.refcat.load_spacesep(refcatname)
             self.refcat.racol = 'ra'
@@ -772,6 +790,9 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.name = refcatname
             self.refcat.short = 'gaia'
             self.refcat.cols2copy = ['gaia_mag']
+            self.refcat.mainfilter = 'gaia_mag'
+            self.refcat.mainfilter_err = None
+            self.refcat.maincolor = None
         else:
             if os.path.isfile(refcatname):
                 pass
@@ -782,7 +803,7 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.racol = refcat_racol
         if refcat_deccol is not None:
             self.refcat.deccol = refcat_deccol
-        
+                
         return(0)
 
     def load_refcat(self,refcatname,
@@ -795,7 +816,7 @@ class jwst_photclass(pdastrostatsclass):
         # parameters depending on the choice of refcat
         self.init_refcat(refcatname,mjd=mjd,
                          refcat_racol=refcat_racol,refcat_deccol=refcat_deccol)
-        print('vvvvvvv',self.refcat.racol,self.refcat.deccol)
+        print('RA/Dec columns in reference catalog: ',self.refcat.racol,self.refcat.deccol)
         
         if refcatname.lower()=='gaia':
             self.refcat.t,self.refcat.racol,self.refcat.deccol = get_GAIA_sources(ra0,dec0,radius_deg,mjd=mjd,pm_median=pm_median)
@@ -816,6 +837,79 @@ class jwst_photclass(pdastrostatsclass):
         
         return(0)
     
+    def getrefcatcolname(self,colname,refcatshort=None,
+                         requiredflag=False,existsflag=True):
+        """
+        returns teh column name in the main photometry catalog
+        that got copied from the reference catalog
+        In general, this is refcatshort
+
+        Parameters
+        ----------
+        colname : string
+            column name in the reference catalog.
+        refcatshort : string, optional
+            short name of reference catalog that is used as prefix for the column names. The default is None.
+            If None, then refcatshort is set to self.refcatshort
+        requiredflag : boolean, optional
+            colname cannot be None, and a RuntimeError is thrown if the table does not conain the column
+        existsflag : boolean, optional
+            if colname is not None, and a RuntimeError is thrown if the table does not conain the column
+            
+        Returns
+        -------
+        None.
+
+        """
+        if refcatshort is None:
+            refcatshort = self.refcatshort
+        if colname is not None:
+           colname  = f'{refcatshort}_{colname}'
+           if not(colname in self.t.columns):
+               if requiredflag or existsflag:
+                   raise RuntimeError(f'Column {colname} is required, but is not one of the Table columns {self.t.columns}!')
+        else:
+            if requiredflag:
+                raise RuntimeError('This column is required and cannot be set to None!')
+        return(colname)
+        
+    def set_important_refcatcols(self,refcatshort=None):
+        """
+        This routine sets the important reference cat column names 
+        in the main photometric catalog (i.e., with the short name of the 
+        reference cat as prefix), based on the info saved in the reference catalog
+        
+        Parameters
+        ----------
+        refcatshort : string, optional
+            short name of reference catalog that is used as prefix for the column names. The default is None.
+            If None, then refcatshort is set to self.refcat.short
+        Raises
+        ------
+        RuntimeError
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        if refcatshort is None:
+            refcatshort = self.refcat.short
+            
+        if refcatshort is None:
+            raise RuntimeError('The short name of the reference catalog is not None, cannot define the important reference catalog columns in the matched photometric catalog!')
+        
+        self.refcatshort = refcatshort
+        self.refcat_racol = self.getrefcatcolname('ra',requiredflag=True)
+        self.refcat_deccol = self.getrefcatcolname('dec',requiredflag=True)
+        self.refcat_xcol = self.getrefcatcolname('x',requiredflag=True)
+        self.refcat_ycol = self.getrefcatcolname('y',requiredflag=True)
+
+        self.refcat_mainfilter = self.getrefcatcolname(self.refcat.mainfilter,existsflag=True)
+        self.refcat_mainfilter_err = self.getrefcatcolname(self.refcat.mainfilter_err,existsflag=True)
+        self.refcat_maincolor = self.getrefcatcolname(self.refcat.maincolor,existsflag=True)
+            
     def match_refcat(self,
                      max_sep = 1.0,
                      refcatshort=None,
@@ -881,18 +975,28 @@ class jwst_photclass(pdastrostatsclass):
         cols2copy = [self.refcat.racol,self.refcat.deccol,'x','y','x_idl','y_idl','ID']
         cols2copy.extend(self.refcat.cols2copy)
 
+        #self.refcatshort = refcatshort
+        #self.refcat_racol = None
+        #self.refcat_deccol = None
         for refcat_col in cols2copy:
             
             if refcat_col == self.refcat.racol:
                 obj_col = f'{refcatshort}_ra'
+                #self.refcat_racol = f'{refcatshort}_ra'
             elif refcat_col == self.refcat.deccol:
                 obj_col = f'{refcatshort}_dec'
+                #self.refcat_deccol = f'{refcatshort}_dec'
             else:
                 obj_col = f'{refcatshort}_{refcat_col}'
                 
             self.t.loc[ixs_obj,obj_col]=list(self.refcat.t.loc[ixs_cat4obj,refcat_col])
         # also add d2d
         self.t.loc[ixs_obj,f'{refcatshort}_d2d']=d2d.arcsec
+
+        #self.refcat_xcol = f'{refcatshort}_x'
+        #self.refcat_ycol = f'{refcatshort}_y'
+
+        self.set_important_refcatcols(refcatshort=refcatshort)
 
         return(0)
         
@@ -1034,6 +1138,7 @@ class jwst_photclass(pdastrostatsclass):
                 self.init_refcat(refcatname,mjd=mjd,
                                  refcat_racol=refcat_racol,
                                  refcat_deccol=refcat_deccol)
+                self.set_important_refcatcols()
                 
         
         #self.write(self.get_photfilename()+'.all')
@@ -1056,6 +1161,7 @@ if __name__ == '__main__':
                   outrootdir=args.outrootdir,
                   outsubdir=args.outsubdir,
                   overwrite=args.overwrite,
+                  load_photcat_if_exists=True,
                   DNunits=True,
                   use_dq=False,
                   SNR_min=10.0)
