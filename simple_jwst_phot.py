@@ -1056,7 +1056,7 @@ class jwst_photclass(pdastrostatsclass):
                  refcatname=None,
                  refcat_racol=None,
                  refcat_deccol=None,
-                 pmflag = True, # apply proper motion
+                 pmflag = False, # apply proper motion
                  pm_median=False,# if pm_median, then the median proper motion is added instead of the individual ones
                  photfilename=None,
                  outrootdir=None,
@@ -1119,7 +1119,7 @@ class jwst_photclass(pdastrostatsclass):
         # get the refcat and match it, but only if either the photometry has 
         # been done (not photcat_loaded), or if rematch_refcat is requested
         if (refcatname is not None):
-            if pmflag: 
+            if pmflag or pm_median: 
                 mjd=self.scihdr['MJD-AVG']
             else: 
                 mjd=None
