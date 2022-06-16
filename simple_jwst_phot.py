@@ -779,7 +779,7 @@ class jwst_photclass(pdastrostatsclass):
                 self.refcat.deccol = 'dec'
             self.refcat.name = refcatname
             self.refcat.short = 'gaia'
-            self.refcat.cols2copy = ['ra_error','dec_error','g','g_err','rp','rp_err','g_rp']
+            self.refcat.cols2copy = ['source_id','ra_error','dec_error','g','g_err','rp','rp_err','g_rp','g_rp_err']
             self.refcat.mainfilter = 'g'
             self.refcat.mainfilter_err = 'g_err'
             self.refcat.maincolor = 'g_rp'

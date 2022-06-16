@@ -796,14 +796,21 @@ class jwst_wcs_align(apply_distortion_singleim):
         #xcol=f'{phot.refcat.short}_x'
         #ycol=f'{phot.refcat.short}_y'
 
-        phot.t.drop(columns=['dx','dy',refcat_xcol,refcat_ycol,f'{phot.refcatshort}_x_idl',f'{phot.refcatshort}_y_idl'],inplace=True)    
+        phot.t.drop(columns=['dx','dy',refcat_xcol,refcat_ycol,f'{phot.refcatshort}_x_idl',f'{phot.refcatshort}_y_idl',f'{phot.refcatshort}_d2d'],inplace=True)    
             
         image_model = datamodels.ImageModel(tweakregfilename)
+        # recalculate the x,y of the ref cat objects
         world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
         phot.t[refcat_xcol], phot.t[refcat_ycol] = world_to_detector(phot.t[refcat_racol],phot.t[refcat_deccol])
         
+        # recalculate dx, dy
         phot.t['dx'] = phot.t[refcat_xcol] - phot.t['x']
         phot.t['dy'] = phot.t[refcat_ycol] - phot.t['y']
+
+        # recalculate the RA, Dec of the image objects
+        detector_to_world = image_model.meta.wcs.get_transform('detector', 'world')
+        phot.t['ra'],phot.t['dec'] = detector_to_world(phot.t['x'],phot.t['y'])
+
 
         if savephottable:
             outfilename = f'{outbasename}.good.phot.txt'
