@@ -535,11 +535,10 @@ class jwst_wcs_align(apply_distortion_singleim):
             tweakreg.yoffset = 0
             tweakreg.brightest = 1000        
         
-
         tweakreg.already_matched = True
         # phot_cal.t.loc[ixs_cal_good] is the table with the good matches!
         if self.verbose: print(f'{len(ixs)} matches are passed to tweakreg {tweakreg.fitgeometry} fitting')
-        t =  Table.from_pandas(phot.t.loc[ixs])
+        t =  Table.from_pandas(phot.t.loc[ixs,[xcol,ycol,refcat_racol,refcat_deccol]])
         tweakreg.refcat = t
         tweakreg.ref_racol = refcat_racol
         tweakreg.ref_deccol = refcat_deccol
@@ -923,6 +922,7 @@ class jwst_wcs_align(apply_distortion_singleim):
 
         if showplots: 
             plt.show()
+
         return(0)
 
 

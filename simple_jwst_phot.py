@@ -164,6 +164,9 @@ def get_GAIA_sources(ra0,dec0,radius_deg,radius_factor=1.1,
                  
     if columns is not None:
         df = df[columns]
+    
+    #print(df['source_id'])
+    #sys.exit(0)
 
     return(df,racol,deccol)
 
@@ -990,6 +993,12 @@ class jwst_photclass(pdastrostatsclass):
                 obj_col = f'{refcatshort}_{refcat_col}'
                 
             self.t.loc[ixs_obj,obj_col]=list(self.refcat.t.loc[ixs_cat4obj,refcat_col])
+            if refcat_col == 'source_id':
+                #print('############################################ converting source_id')
+                #bla_ixs = self.ix_not_null(obj_col)
+                #print(f'XXXXXXX {len(bla_ixs)} {len(self.t[obj_col])}')
+                #print(self.t[obj_col])
+                self.t[obj_col]=self.t[obj_col].astype(pd.Int64Dtype())
         # also add d2d
         self.t.loc[ixs_obj,f'{refcatshort}_d2d']=d2d.arcsec
 
