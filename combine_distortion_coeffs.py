@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+intializecols4statparams#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Wed Apr 13 10:35:28 2022
