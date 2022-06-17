@@ -234,6 +234,7 @@ def radec_to_idl(ra, dec, aperturename, primaryhdr, scihdr):
   
     return x_idl, y_idl
 
+"""
 def xy_to_idl(x, y, aperturename, primaryhdr, scihdr):
 
     image_siaf_aperture = get_image_siaf_aperture(aperturename, primaryhdr, scihdr)
@@ -241,7 +242,15 @@ def xy_to_idl(x, y, aperturename, primaryhdr, scihdr):
     x_idl, y_idl      = image_siaf_aperture.det(x, y, 'det', 'idl')
   
     return x_idl, y_idl
-    
+"""
+
+def xy_to_idl(x,y, aperturename, primaryhdr, scihdr):
+       instrument = primaryhdr['INSTRUME']
+       siaf = pysiaf.Siaf(instrument)   ### this line will slow you down, better if you can pass the SIAF object directly (or read it from the main)
+       apername = primaryhdr['APERNAME']
+       ap= siaf.apertures[apername]
+       xidl,yidl = ap.sci_to_idl(x+1,y+1)
+       return xidl, yidl
 
 class jwst_photclass(pdastrostatsclass):
     def __init__(self):
@@ -1121,7 +1130,8 @@ class jwst_photclass(pdastrostatsclass):
         self.xy_to_radec(indices=ixs_clean)
          
         # calculate the ideal coordinates
-        self.radec_to_idl(indices=ixs_clean)
+        #self.radec_to_idl(indices=ixs_clean)
+        self.xy_to_idl(indices=ixs_clean)
         # calculate the ideal coordinates
         #self.xy_to_idl(indices=ixs_clean,xcol_idl='x_idl_test',ycol_idl='y_idl_test')
         
