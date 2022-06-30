@@ -20,6 +20,8 @@ class apply_distortions(pdastroclass):
         
         self.verbose=0
         
+        self.outdir = None
+        
         self.distortionfiles = pdastroclass()
         self.apply_dist_singleim = apply_distortion_singleim()
         
@@ -77,8 +79,12 @@ class apply_distortions(pdastroclass):
             self.t.loc[ix,'detector']=f'{detector}'
             self.t.loc[ix,'instrument']=f'{hdr["INSTRUME"].lower()}'
             self.t.loc[ix,'subarray']=f'{hdr["SUBARRAY"].lower()}'
-            self.t.loc[ix,self.filter_col]=f'{hdr["FILTER"].lower()}'
-            self.t.loc[ix,self.pupil_col]=f'{hdr["PUPIL"].lower()}'
+            if self.t.loc[ix,'instrument']=='fgs':
+                self.t.loc[ix,self.filter_col]='clear'
+                self.t.loc[ix,self.pupil_col]='clear'
+            else:   
+                self.t.loc[ix,self.filter_col]=f'{hdr["FILTER"].lower()}'
+                self.t.loc[ix,self.pupil_col]=f'{hdr["PUPIL"].lower()}'
         if self.verbose:
             print('##################\n### Input files:')
             self.write()
@@ -93,14 +99,19 @@ class apply_distortions(pdastroclass):
             #    raise RuntimeError(f'could not parse filename {os.path.basename(self.distortionfiles.t.loc[ix,"filename"])} for aperture, filter and/or pupil!')
             #aperture,filt,pupil = m.groups()
 
-            m1 = re.search('distortion_coeffs_([a-zA-Z0-9]+_[a-zA-Z0-9]+)_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.asdf',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
-            m2 = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+).*_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)\..*distcoeff\.asdf',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
-            if m1 is not None:
-                aperture,filt,pupil = m1.groups()
-            elif m2 is not None:
-                aperture,filt,pupil = m2.groups()        
+            m0 = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+)_distcoeff\.asdf',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
+            if m0 is not None:
+                aperture, = m0.groups()    
+                filt = pupil = 'clear'
             else:
-                raise RuntimeError(f'could not parse filename {os.path.basename(self.distortionfiles.t.loc[ix,"filename"])} for aperture, filter and/or pupil!')
+                m1 = re.search('distortion_coeffs_([a-zA-Z0-9]+_[a-zA-Z0-9]+)_([a-zA-Z0-9]+)_([a-zA-Z0-9]+).*\.asdf',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
+                m2 = re.search('^([a-zA-Z0-9]+_[a-zA-Z0-9]+).*_([a-zA-Z0-9]+)_([a-zA-Z0-9]+)\..*distcoeff\.asdf',os.path.basename(self.distortionfiles.t.loc[ix,'filename']))
+                if m1 is not None:
+                    aperture,filt,pupil = m1.groups()
+                elif m2 is not None:
+                    aperture,filt,pupil = m2.groups()        
+                else:
+                    raise RuntimeError(f'could not parse filename {os.path.basename(self.distortionfiles.t.loc[ix,"filename"])} for aperture, filter and/or pupil!')
 
             m3 = re.search('(^[a-zA-Z0-9]+)',aperture)    
             if m3 is not None:
@@ -120,6 +131,8 @@ class apply_distortions(pdastroclass):
 
 
     def find_ref_filter(self,filt,pupil,instrument,detector):
+        if instrument.lower()=='fgs':
+            return(0,'clear')
         # we only need coeffs2asdf for filter mapping if needed
         coeffs = coeffs2asdf()
         if (instrument.lower()=='nircam') and (pupil!='clear'):
@@ -202,8 +215,8 @@ class apply_distortions(pdastroclass):
             ixs_coeff = self.distortionfiles.ix_equal(self.pupil_col,target_pupil,indices=ixs_coeff)
             if len(ixs_coeff)==0:
                 print(f'WARNING: No distortion files found with pupil={target_pupil}')
-                
-            # now get the matching filter!
+            
+           # now get the matching filter!
             ixs_coeff_filt = self.distortionfiles.ix_equal(self.filter_col,self.t.loc[ix_im,self.filter_col],indices=ixs_coeff)
             if len(ixs_coeff_filt)==0 and allow_filter_mapping:
                 (errorflag,reffilter) = self.find_ref_filter(self.t.loc[ix_im,self.filter_col],
@@ -216,7 +229,6 @@ class apply_distortions(pdastroclass):
                     if len(ixs_coeff_filt)==0:
                         print(f'WARNING: No distortion files found with reference filter={reffilter}!')
             ixs_coeff = ixs_coeff_filt
-
             
             # check the matches!
             if len(ixs_coeff)==1:
@@ -230,7 +242,7 @@ class apply_distortions(pdastroclass):
                 print(f'ERROR: more than one match for {self.t.loc[ix_im,"filename"]}!')
                 self.distortionfiles.write(indices=ixs_coeff)
                 raise RuntimeError(f'more than one match for {self.t.loc[ix_im,"filename"]}!')
-                
+            
         print(f'{len(ixs_matches)} out of {len(ixs_im)} matched!')
         if self.verbose:
             print('Matches:')
@@ -242,23 +254,58 @@ class apply_distortions(pdastroclass):
             
         return(ixs_matches,ixs_not_matches)
 
+    def set_outdir(self,outrootdir=None,outsubdir=None):
+        self.outdir = self.apply_dist_singleim.set_outdir(outrootdir,outsubdir)
+        return(self.outdir)
+
+
+    def get_output_filenames(self, suffixmapping = {'cal':'assignwcsstep','rate':'cal'},ixs=None):
+        ixs = self.getindices(ixs)
+        ixs_exists=[]
+        ixs_notexists=[]
+        for ix in ixs:
+            pattern = '(.*)_([a-zA-Z0-9]+)\.fits$'
+            m = re.search(pattern,self.t.loc[ix,'filename'])
+            if m is None:
+                raise RuntimeError(f'cannot determine suffix for file {self.t.loc[ix,"filename"]} with pattern {pattern}!')
+            (inputbasename,inputsuffix)=m.groups()
+            inputbasename = os.path.basename(inputbasename)
+            print(inputbasename,inputsuffix)
+            if not (inputsuffix in suffixmapping):
+                raise RuntimeError(f'suffix {inputsuffix} is not in mapping {suffixmapping}')
+            
+            outfilename = f'{self.outdir}/{inputbasename}_{suffixmapping[inputsuffix]}.fits'
+            self.t.loc[ix,'outfilename']=outfilename
+            if os.path.isfile(outfilename):
+                self.t.loc[ix,'outfile_exists']='yes'
+                ixs_exists.append(ix)
+            else:
+                self.t.loc[ix,'outfile_exists']='no'
+                ixs_notexists.append(ix)
+        
+        if self.verbose>1:  self.write(indices=ixs)
+
+        return(ixs_exists,ixs_notexists)
+            
+
     def apply_distortions(self, ixs, 
-                          outrootdir='same_as_distortionfiles', 
-                          outsubdir=None,
+                          #outrootdir=None, 
+                          #outsubdir=None,
                           overwrite=False,
                           skip_if_exists=False):
         self.t.loc[ixs,'errorflag'] = None
         self.t.loc[ixs,'skipflag'] = None
-        self.apply_dist_singleim.set_outdir(outrootdir,outsubdir)
-        
+        #self.apply_dist_singleim.set_outdir(outrootdir,outsubdir)
+        self.apply_dist_singleim.outdir = self.outdir
+
         for ix in ixs:
             distfile = self.t.loc[ix,'distortion_match']
             inputfile = self.t.loc[ix,'filename']
             #applydist_singleim = test_distortion_singleim()
             self.apply_dist_singleim.verbose = self.verbose
             
-            if outrootdir is not None and re.search('same_as_distortionfiles',outrootdir.lower()):
-                self.apply_dist_singleim.set_outdir(os.path.dirname(distfile),outsubdir)
+            #if outrootdir is not None and re.search('same_as_distortionfiles',outrootdir.lower()):
+            #    self.apply_dist_singleim.set_outdir(os.path.dirname(distfile),outsubdir)
                 
                 #self.applydist_singleim.apply_distortions(inputfile,distfile,skip_rate2cal_if_exists=skip_rate2cal_if_exists)
             try:
@@ -284,6 +331,10 @@ if __name__ == '__main__':
     
     applydist.verbose=args.verbose
     
+    applydist.set_outdir(outrootdir=args.outrootdir,
+                         outsubdir=args.outsubdir)
+
+    
     applydist.get_input_files(args.input_files,directory=args.input_dir)
     applydist.get_distortion_files(args.distortion_files,directory=None)
     
@@ -302,7 +353,21 @@ if __name__ == '__main__':
         print('NO MATCHES FOUND!! {len(ixs_not_matches)} unmatched images. exiting...')
         sys.exit(0)
 
-    do_it = input('Do you want to continue and apply the distortions [y/n]?  ')
+    ixs_exists,ixs_notexists = applydist.get_output_filenames(ixs=ixs_matches)
+    print('vvv',ixs_exists,ixs_notexists)
+    
+    ixs_todo = ixs_notexists[:]
+    if len(ixs_exists)>0:
+        if args.skip_if_exists:
+            print(f'{len(ixs_exists)} output images already exist, skipping since --skip_if_exists')
+        else:
+            if args.overwrite:
+               ixs_todo.extend(ixs_exists) 
+               print(f'{len(ixs_exists)} output images already exist,overwriting them if continuing!')
+            else:
+               raise RuntimeError(f'{len(ixs_exists)} output images already exist, exiting! if you want to overwrite them, use the --overwrite option, or if you want to skip them, use the --skip_if_exists option!')
+                
+    do_it = input('Do you want to continue and apply the distortions  for {len(ixs_todo)} images [y/n]?  ')
     if do_it.lower() in ['y','yes']:
         pass
     elif do_it.lower() in ['n','no']:
@@ -313,9 +378,9 @@ if __name__ == '__main__':
         sys.exit(0)
 
 
-    applydist.apply_distortions(ixs_matches,
-                                outrootdir=args.outrootdir,
-                                outsubdir=args.outsubdir,
+    applydist.apply_distortions(ixs_todo,
+                                #outrootdir=args.outrootdir,
+                                #outsubdir=args.outsubdir,
                                 overwrite=args.overwrite,
                                 skip_if_exists=args.skip_if_exists)
     applydist.write()

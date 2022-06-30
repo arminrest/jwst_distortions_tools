@@ -1,4 +1,4 @@
-intializecols4statparams#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Wed Apr 13 10:35:28 2022
@@ -54,6 +54,7 @@ class combine_coeffs(pdastrostatsclass):
             outrootdir = None
 
         parser.add_argument('coeff_filepatterns', nargs='+', type=str, default=None, help='list of coefficient file(pattern)s. This can also be a *.singlefile.txt (output from this script) or a *goodfiles.txt with a column "filename", and the files in that list are used')
+        parser.add_argument('--siaf_xml_file',default=None, help='pass the siaf xml file. This can be used to pass new alignments etc (pattern)s')
 
         parser.add_argument('--skip_if_file_not_exists', default=False, action='store_true', help='Do not throw an error if an input file does not exist, just skip it.')
 
@@ -261,6 +262,7 @@ class combine_coeffs(pdastrostatsclass):
         return(vec_max,dx,dy)
         
     def calc_average_coefficients(self, aperture, indices=None, filt=None, pupil=None,
+                                  siaf_xml_file=None,
                                   saveflag=False,outbasename='test',overwrite=False,
                                   showplot=False,saveplot=False,coron_region='all'):
 
@@ -412,6 +414,7 @@ class combine_coeffs(pdastrostatsclass):
             #sys.exit(0)
             self.results.coefffile2adfs(outbasename+'.distcoeff.txt', filt=filt, 
                                         outname=f'{outbasename}.distcoeff.asdf',
+                                        siaf_xml_file=siaf_xml_file,
                                         history=history,
                                         author=author, 
                                         descrip=descrip, 
@@ -468,7 +471,9 @@ class combine_coeffs(pdastrostatsclass):
        
         return(outname)
         
-    def calc_average_coefficients_vecmax_cut(self, aperture, vecmax_limits_mas=None, 
+    def calc_average_coefficients_vecmax_cut(self, aperture, 
+                                             vecmax_limits_mas=None, 
+                                             siaf_xml_file=None,
                                              indices=None, filt=None, pupil=None,
                                              **kwargs):
 
@@ -484,7 +489,9 @@ class combine_coeffs(pdastrostatsclass):
             kwargs0['saveplot']=False
             kwargs0['showplot']=False
             kwargs0['saveflag']=False
-        self.calc_average_coefficients(aperture,indices=indices, filt=filt, pupil=pupil, **kwargs0)
+        self.calc_average_coefficients(aperture,indices=indices, filt=filt, pupil=pupil, 
+                                       siaf_xml_file=siaf_xml_file,
+                                       **kwargs0)
         if vecmax_limits_mas is None or (vecmax_limits_mas==[]):
             return(0)
         
@@ -499,7 +506,9 @@ class combine_coeffs(pdastrostatsclass):
             
             if counter==len(vecmax_limits_mas)-1:
                 # final calculation! save the results, plots etc
-                self.calc_average_coefficients(aperture,indices=ixs_keep, filt=filt, pupil=pupil, **kwargs)
+                self.calc_average_coefficients(aperture,indices=ixs_keep, filt=filt, pupil=pupil, 
+                                               siaf_xml_file=siaf_xml_file,
+                                               **kwargs)
                 self.vecmax.write()
                 Nin = len(unique(self.t.loc[indices,'filename']))
                 Ngood = len(unique(self.t.loc[ixs_keep,'filename']))
@@ -512,12 +521,15 @@ class combine_coeffs(pdastrostatsclass):
                                       'median_vec_max_mas':np.median(self.vecmax.t['vec_max_mas'])
                                       })
             else:
-                self.calc_average_coefficients(aperture,indices=ixs_keep, filt=filt, pupil=pupil, **kwargs0)
+                self.calc_average_coefficients(aperture,indices=ixs_keep, filt=filt, pupil=pupil, 
+                                               siaf_xml_file=siaf_xml_file,
+                                               **kwargs0)
                 
 
  
 
-    def calc_average_coefficients_all(self,  vecmax_limits_mas=None, 
+    def calc_average_coefficients_all(self,  vecmax_limits_mas=None,
+                                      siaf_xml_file=None,
                                       indices=None, apertures=None, 
                                       require_filter=True, require_pupil=True,
                                       saveflag=True, overwrite=False,
@@ -559,6 +571,7 @@ class combine_coeffs(pdastrostatsclass):
                             outbasename = self.get_outbasename(outdir,aperture,filt=filt,pupil=pupil,add2basename=add2basename)
                             self.calc_average_coefficients_vecmax_cut(aperture,
                                                            vecmax_limits_mas=vecmax_limits_mas,
+                                                           siaf_xml_file=siaf_xml_file,
                                                            indices=ixs2use_pupil, 
                                                            filt=filt, pupil=pupil,
                                                            saveflag=saveflag,outbasename=outbasename,
@@ -569,6 +582,7 @@ class combine_coeffs(pdastrostatsclass):
                         outbasename = self.get_outbasename(outdir,aperture,filt=filt,pupil=pupil,add2basename=add2basename)
                         self.calc_average_coefficients_vecmax_cut(aperture,
                                                        vecmax_limits_mas=vecmax_limits_mas,
+                                                       siaf_xml_file=siaf_xml_file,
                                                        indices=ixs2use_filt, 
                                                        filt=filt, pupil=pupil,
                                                        saveflag=saveflag,outbasename=outbasename,
@@ -581,6 +595,7 @@ class combine_coeffs(pdastrostatsclass):
                 outbasename = self.get_outbasename(outdir,aperture,filt=filt,pupil=pupil,add2basename=add2basename)
                 self.calc_average_coefficients_vecmax_cut(aperture,
                                                vecmax_limits_mas=vecmax_limits_mas,
+                                               siaf_xml_file=siaf_xml_file,
                                                indices=ixs2use, 
                                                filt=filt, pupil=pupil,
                                                saveflag=saveflag,outbasename=outbasename,
@@ -614,6 +629,7 @@ if __name__ == '__main__':
                             require_pupil = not args.ignore_pupils)
     
     coeffs.calc_average_coefficients_all(apertures=args.apertures, 
+                                         siaf_xml_file=args.siaf_xml_file,
                                          require_filter = not args.ignore_filters,
                                          require_pupil = not args.ignore_pupils,
                                          vecmax_limits_mas = args.vecmax_limits_mas,

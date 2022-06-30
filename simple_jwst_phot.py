@@ -32,6 +32,10 @@ from astroquery.gaia import Gaia
 from astropy.time import Time
 import pandas as pd
 
+from jwcf import hawki, hst
+from astropy.coordinates import SkyCoord
+
+
 from pdastro import pdastroclass,pdastrostatsclass,makepath4file,unique,AnotB,AorB,AandB,rmfile
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 
@@ -75,10 +79,86 @@ def get_GAIA_sources_NP(f,pm=True,radius_factor=2):
     ok = (np.isfinite(tb_gaia['x'])) & (np.isfinite(tb_gaia['y'])) 
     return tb_gaia[ok]
 
+def get_hawki_cat(ra0,dec0,radius_deg,radius_factor=1.1,
+                  columns=['ID','ra','dec','ra_error_mas','dec_error_mas','J2mag','K2mag','J2_K2','q_Jmag','gdr2_source_id','sep_arcmin']):
+
+    cat = hawki.hawki_catalog()
+    cat.rename_column('ra_deg', 'ra')
+    cat.rename_column('dec_deg', 'dec')
+    cat.rename_column('j_2mass_extrapolated', 'j_magnitude')
+    #print(cat.columns)
+
+    pos0 = SkyCoord(ra=ra0, dec=dec0, unit=(u.deg,u.deg), frame='icrs')
+    pos1 = SkyCoord(ra=cat['ra'], dec=cat['dec'], unit=(u.deg,u.deg), frame='icrs')
+    sep = pos0.separation(pos1)
+    print(sep.degree)
+    cat['sep_deg'] = sep
+    cat['sep_arcmin'] = sep/60.0
+    cat['J2_K2'] = cat['J2mag'] - cat['K2mag']
+
+    df = cat.to_pandas()
+    
+    # only keep the values within the radius
+    ixs = df.index.values
+    Ntot=len(ixs)
+    (keep,) = np.where(df.loc[ixs,'sep_deg'].le(radius_deg*radius_factor))
+    ixs = ixs[keep]
+    print(f'Keeping {len(ixs)} out of {Ntot} of hawkI sources: all positions within {radius_deg*radius_factor:.4f} deg of RA/Dec=({ra0},{dec0})')
+    df = df.loc[ixs]
+     
+    #print('bbb0',columns)
+    if columns is not None:
+        df = df[columns]
+
+        
+    return(df,'ra','dec')
+
+
+def get_hst_cat(ra0,dec0,radius_deg,radius_factor=1.1,
+                mjd=None,
+                columns=['ID','ra','dec','ra_error_mas','dec_error_mas','pmra','epmra','pmdec','epmdec',
+                        'h_mag_vega','j_mag_vega','k_mag_vega','j_k',
+                        'sep_arcmin']):
+    if mjd is not None:
+        time_obs = Time(mjd, format ='mjd')
+        decimal_year_of_observation = time_obs.decimalyear
+        print(f'decimal year = {decimal_year_of_observation} for HST LMC cat proper motion correction!')
+    else:
+        decimal_year_of_observation = None
+    
+    cat = hst.hst_catalog(decimal_year_of_observation=decimal_year_of_observation)
+    cat.rename_column('ra_deg', 'ra')
+    cat.rename_column('dec_deg', 'dec')
+    #print(cat.columns)
+
+    pos0 = SkyCoord(ra=ra0, dec=dec0, unit=(u.deg,u.deg), frame='icrs')
+    pos1 = SkyCoord(ra=cat['ra'], dec=cat['dec'], unit=(u.deg,u.deg), frame='icrs')
+    sep = pos0.separation(pos1)
+    #print(sep.degree)
+    cat['sep_deg'] = sep
+    cat['sep_arcmin'] = sep/60.0
+    cat['j_k'] = cat['j_mag_vega'] - cat['k_mag_vega']
+
+    df = cat.to_pandas()
+    
+    # only keep the values within the radius
+    ixs = df.index.values
+    Ntot=len(ixs)
+    (keep,) = np.where(df.loc[ixs,'sep_deg'].le(radius_deg*radius_factor))
+    ixs = ixs[keep]
+    print(f'Keeping {len(ixs)} out of {Ntot} of HST LMC cat sources: all positions within {radius_deg*radius_factor:.4f} deg of RA/Dec=({ra0},{dec0})')
+    df = df.loc[ixs]
+     
+    if columns is not None:
+        df = df[columns]
+
+    return(df,'ra','dec')
+
+
 def get_GAIA_sources(ra0,dec0,radius_deg,radius_factor=1.1,
                      mjd=None, # if mjd!=None, then proper motion (pm) adjustement is done
                      pm_median = False, # if pm_median, then the median proper motion is added instead of the individual ones
-                     datarelease='edr3',
+                     datarelease='dr2',
                      calc_mag_errors=True,
                      rename_mag_colnames=True, # renames from f'phot_{filt}_mean_mag' to f'{filt}'
                      remove_null=True,
@@ -92,6 +172,8 @@ def get_GAIA_sources(ra0,dec0,radius_deg,radius_factor=1.1,
         dr = 'gaiadr2'
     elif datarelease.lower() in ['edr3','gaiaedr3']:
         dr = 'gaiaedr3'
+    elif datarelease.lower() in ['dr3','gaiadr3']:
+        dr = 'gaiadr3'
     else:
         raise RuntimeError(f'datarelease {datarelease} not known yet')
     
@@ -202,9 +284,9 @@ def get_GAIA_sources_for_image(imagefilename,pm=True,radius_factor=1.1):
 
 def get_image_siaf_aperture(aperturename, primaryhdr, scihdr):
 
-
     instrument = primaryhdr['INSTRUME']
     apername = primaryhdr['APERNAME']
+    print('GGGGGGGGGGGG',apername,aperturename)
     
     ra_ref_orig = scihdr['RA_REF']
     dec_ref_orig = scihdr['DEC_REF']
@@ -226,6 +308,16 @@ def get_image_siaf_aperture(aperturename, primaryhdr, scihdr):
       
     return image_siaf_aperture
 
+def radec_to_idlX(x,y, aperturename, primaryhdr, scihdr):
+    # Method from Mario
+    instrument = primaryhdr['INSTRUME']
+    siaf = pysiaf.Siaf(instrument)   ### this line will slow you down, better if you can pass the SIAF object directly (or read it from the main)
+    apername = primaryhdr['APERNAME']
+    ap= siaf.apertures[apername]
+    xidl,yidl = ap.sci_to_idl(x+1,y+1)
+    return xidl, yidl
+
+
 def radec_to_idl(ra, dec, aperturename, primaryhdr, scihdr):
 
     image_siaf_aperture = get_image_siaf_aperture(aperturename, primaryhdr, scihdr)
@@ -245,12 +337,13 @@ def xy_to_idl(x, y, aperturename, primaryhdr, scihdr):
 """
 
 def xy_to_idl(x,y, aperturename, primaryhdr, scihdr):
-       instrument = primaryhdr['INSTRUME']
-       siaf = pysiaf.Siaf(instrument)   ### this line will slow you down, better if you can pass the SIAF object directly (or read it from the main)
-       apername = primaryhdr['APERNAME']
-       ap= siaf.apertures[apername]
-       xidl,yidl = ap.sci_to_idl(x+1,y+1)
-       return xidl, yidl
+    # Method from Mario
+    instrument = primaryhdr['INSTRUME']
+    siaf = pysiaf.Siaf(instrument)   ### this line will slow you down, better if you can pass the SIAF object directly (or read it from the main)
+    apername = primaryhdr['APERNAME']
+    ap= siaf.apertures[apername]
+    xidl,yidl = ap.sci_to_idl(x+1,y+1)
+    return xidl, yidl
 
 class jwst_photclass(pdastrostatsclass):
     def __init__(self):
@@ -706,12 +799,14 @@ class jwst_photclass(pdastrostatsclass):
             ixs = self.ix_inrange('dmag',None,dmag_max,indices=ixs)
         return(ixs)
 
-    def xy_to_radec(self,xcol='x',ycol='y',racol='ra',deccol='dec',indices=None):
+    def xy_to_radec(self,xcol='x',ycol='y',racol='ra',deccol='dec',indices=None,
+                    xshift=0.0,yshift=0.0):
         ixs = self.getindices(indices=indices)
 
         image_model = ImageModel(self.im)
         
-        ra,dec = image_model.meta.wcs(self.t.loc[ixs,xcol], self.t.loc[ixs,ycol])
+        print(f'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF {xshift} {yshift}')
+        ra,dec = image_model.meta.wcs(self.t.loc[ixs,xcol]+xshift, self.t.loc[ixs,ycol]+yshift)
         coord = SkyCoord(ra, dec, unit='deg')
         
         self.t.loc[ixs,racol] = coord.ra.degree
@@ -796,7 +891,7 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.mainfilter_err = 'g_err'
             self.refcat.maincolor = 'g_rp'
         elif os.path.basename(refcatname)=='LMC_gaia_DR3.nrcposs':
-            self.refcat.load_spacesep(refcatname)
+            #self.refcat.load_spacesep(refcatname)
             self.refcat.racol = 'ra'
             self.refcat.deccol = 'dec'
             self.refcat.name = refcatname
@@ -805,6 +900,24 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.mainfilter = 'gaia_mag'
             self.refcat.mainfilter_err = None
             self.refcat.maincolor = None
+        elif os.path.basename(refcatname).lower()=='hst_lmc':
+            self.refcat.racol = 'ra'
+            self.refcat.deccol = 'dec'
+            self.refcat.name = refcatname
+            self.refcat.short = 'hst'
+            self.refcat.cols2copy = ['ID','ra_error_mas','dec_error_mas','h_mag_vega','j_mag_vega','k_mag_vega','j_k']
+            self.refcat.mainfilter = 'j'
+            self.refcat.mainfilter_err = None
+            self.refcat.maincolor = 'j_k'
+        elif os.path.basename(refcatname)=='hawki':
+            self.refcat.racol = 'ra'
+            self.refcat.deccol = 'dec'
+            self.refcat.name = refcatname
+            self.refcat.short = 'hawki'
+            self.refcat.cols2copy = ['ID','ra_error_mas','dec_error_mas','J2mag','K2mag','J2_K2']
+            self.refcat.mainfilter = 'J2mag'
+            self.refcat.mainfilter_err = None
+            self.refcat.maincolor = 'J2_K2'
         else:
             if os.path.isfile(refcatname):
                 pass
@@ -832,16 +945,22 @@ class jwst_photclass(pdastrostatsclass):
         
         if refcatname.lower()=='gaia':
             self.refcat.t,self.refcat.racol,self.refcat.deccol = get_GAIA_sources(ra0,dec0,radius_deg,mjd=mjd,pm_median=pm_median)
+            self.refcat.t['ID']=self.refcat.getindices()
         elif os.path.basename(refcatname)=='LMC_gaia_DR3.nrcposs':
             self.refcat.load_spacesep(refcatname)
+            self.refcat.t['ID']=self.refcat.getindices()
+        elif os.path.basename(refcatname).lower()=='hst_lmc':
+            self.refcat.t,self.refcat.racol,self.refcat.deccol = get_hst_cat(ra0,dec0,radius_deg,mjd=mjd)
+        elif os.path.basename(refcatname)=='hawki':
+            if (mjd is not None) or pm_median:
+                raise RuntimeError('Cannot correct for proper motion with catalog {refcatname}')
+            self.refcat.t,self.refcat.racol,self.refcat.deccol = get_hawki_cat(ra0,dec0,radius_deg)
         else:
             if os.path.isfile(refcatname):
                 pass
             else:
                 raise RuntimeError(f'Don\'t know waht to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
-                
-        self.refcat.t['ID']=self.refcat.getindices()
-        
+                        
         if refcat_racol is not None:
             self.refcat.racol = refcat_racol
         if refcat_deccol is not None:
@@ -924,6 +1043,7 @@ class jwst_photclass(pdastrostatsclass):
             
     def match_refcat(self,
                      max_sep = 1.0,
+                     borderpadding=40,
                      refcatshort=None,
                      aperturename=None,
                      primaryhdr=None, 
@@ -954,14 +1074,44 @@ class jwst_photclass(pdastrostatsclass):
 
         #### gaia catalog
         # get ideal coords into table
-        self.refcat.t['x_idl'], self.refcat.t['y_idl'] = radec_to_idl(self.refcat.t[self.refcat.racol], 
-                                                                      self.refcat.t[self.refcat.deccol],
-                                                                      aperturename, 
-                                                                      primaryhdr, scihdr)
+        #self.refcat.t['x_idl'], self.refcat.t['y_idl'] = radec_to_idl(self.refcat.t[self.refcat.racol], 
+        #                                                              self.refcat.t[self.refcat.deccol],
+        #                                                              aperturename, 
+        #                                                              primaryhdr, scihdr)
+        #xmin = self.refcat.t['x_idl'].min()
+        #xmax = self.refcat.t['x_idl'].max()
+        #ymin = self.refcat.t['y_idl'].min()
+        #ymax = self.refcat.t['y_idl'].max()
+        #print(f'refcat objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
+
         # cut down to the objects that are within the image
-        ixs_cat = self.refcat.ix_inrange('x_idl',xmin-max_sep,xmax+max_sep)
-        ixs_cat = self.refcat.ix_inrange('y_idl',ymin-max_sep,ymax+max_sep,indices=ixs_cat)
-        print(f'Keeping {len(ixs_cat)} out of {len(self.refcat.getindices())} catalog objects')
+        #ixs_cat = self.refcat.ix_inrange('x_idl',xmin-max_sep,xmax+max_sep)
+        #ixs_cat = self.refcat.ix_inrange('y_idl',ymin-max_sep,ymax+max_sep,indices=ixs_cat)
+        #print(f'Keeping {len(ixs_cat)} out of {len(self.refcat.getindices())} catalog objects')
+        #ixs_cat = self.refcat.ix_not_null([self.refcat.racol,self.refcat.deccol],indices=ixs_cat)
+        #print(f'Keeping {len(ixs_cat)}  after removing NaNs from ra/dec')
+        
+        image_model = ImageModel(self.im)
+        world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
+        (self.refcat.t['x'], self.refcat.t['y']) = world_to_detector(self.refcat.t[self.refcat.racol],self.refcat.t[self.refcat.deccol])
+
+        #xmin = self.refcat.t['x'].min()
+        #xmax = self.refcat.t['x'].max()
+        #ymin = self.refcat.t['y'].min()
+        #ymax = self.refcat.t['y'].max()
+        #print(f'refcat objects are in x=[{xmin:.2f},{xmax:.2f}] and y=[{ymin:.2f},{ymax:.2f}] range')
+        
+        #sys.exit(0)
+
+        # cut down to the objects that are within the image
+        xmin = 0.0-borderpadding
+        xmax = self.scihdr['NAXIS1']+borderpadding
+        ymin = 0.0-borderpadding
+        ymax = self.scihdr['NAXIS2']+borderpadding
+        
+        ixs_cat = self.refcat.ix_inrange('x',xmin,xmax)
+        ixs_cat = self.refcat.ix_inrange('y',ymin,ymax,indices=ixs_cat)
+        print(f'Keeping {len(ixs_cat)} out of {len(self.refcat.getindices())} catalog objects within x={xmin}-{xmax} and y={ymin}-{ymax}')
         ixs_cat = self.refcat.ix_not_null([self.refcat.racol,self.refcat.deccol],indices=ixs_cat)
         print(f'Keeping {len(ixs_cat)}  after removing NaNs from ra/dec')
 
@@ -984,7 +1134,7 @@ class jwst_photclass(pdastrostatsclass):
 
 
         # copy over the relevant columns from refcat. The columns are preceded with '{refcatshort}_'
-        cols2copy = [self.refcat.racol,self.refcat.deccol,'x','y','x_idl','y_idl','ID']
+        cols2copy = [self.refcat.racol,self.refcat.deccol,'x','y','ID']
         cols2copy.extend(self.refcat.cols2copy)
 
         #self.refcatshort = refcatshort
@@ -1083,14 +1233,20 @@ class jwst_photclass(pdastrostatsclass):
                  load_photcat_if_exists=False,
                  rematch_refcat=False,
                  use_dq = False,
-                 DNunits=True, SNR_min=3.0):
+                 DNunits=True, 
+                 SNR_min=3.0,
+                 do_photometry_flag=True,
+                 photcat_loaded = False,
+                 Nbright4match=None,
+                 xshift=0.0,# added to the x coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
+                 yshift=0.0 # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
+                 ):
         print(f'\n### Doing photometry on {imagename}')
 
         # get the photfilename. photfilename='auto' removes fits from image name and replaces it with phot.txt
         self.photfilename = self.get_photfilename(photfilename,outrootdir=outrootdir,outsubdir=outsubdir,imagename=imagename)
         
         # Load photcat if wanted
-        do_photometry_flag=True
         photcat_loaded = False
         if (self.photfilename is not None):
             print(f'photometry catalog filename: {self.photfilename}')
@@ -1125,9 +1281,13 @@ class jwst_photclass(pdastrostatsclass):
         # get the indices of good stars
         ixs_clean = self.clean_phottable(SNR_min=SNR_min)
         print(f'{len(ixs_clean)} out of {len(self.getindices())} entries remain in photometry table')
+        if Nbright4match is not None:
+            ixs_sort = self.ix_sort_by_cols(['mag'],indices=ixs_clean)
+            ixs_clean = ixs_sort[:Nbright4match]
+            print(f'keeping the britghtest {Nbright4match} sources: {len(ixs_clean)} out of {len(self.getindices())} entries remain in photometry table')
         
         # calculate the ra,dec
-        self.xy_to_radec(indices=ixs_clean)
+        self.xy_to_radec(indices=ixs_clean,xshift=xshift,yshift=yshift)
          
         # calculate the ideal coordinates
         #self.radec_to_idl(indices=ixs_clean)
@@ -1183,5 +1343,8 @@ if __name__ == '__main__':
                   load_photcat_if_exists=True,
                   DNunits=True,
                   use_dq=False,
-                  SNR_min=10.0)
+                  SNR_min=args.SNR_min,
+                  xshift=args.xshift,# added to the x coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
+                  yshift=args.yshift # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
+                  )
     

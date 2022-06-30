@@ -414,7 +414,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--distortion_file', default=None, help='distortion file, in asdf format. If not None, distortion file is applied to the cal image')
         parser.add_argument('--skip_applydistortions_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the distortion terms, assuming this has already been done.')
 
-        parser.add_argument('--SNR_min', default=10.0, help='mininum SNR for object in image to be used for analysis (default=%(default)s)')
+        parser.add_argument('--SNR_min', default=10.0,type=float, help='mininum SNR for object in image to be used for analysis (default=%(default)s)')
 
         parser.add_argument('--use_dq', default=False, action='store_true', help='use the DQ extensions for masking')
 
@@ -432,7 +432,13 @@ class jwst_wcs_align(apply_distortion_singleim):
 
         parser.add_argument('--d2d_max', default=None, type=float, help='maximum distance between source in image and refcat object, in arcsec (default=%(default)s)')
         parser.add_argument('--dmag_max', default=0.1, type=float, help='maximum uncertainty of sources in image (default=%(default)s)')
+        parser.add_argument('--sharpness_lim', default=(0.4,1.0), nargs=2, type=float, help='sharpness limits of sources in image (default=%(default)s)')
+        parser.add_argument('--roundness1_lim', default=(-0.75,0.75), nargs=2, type=float, help='roundness1 limits of sources in image (default=%(default)s)')
+        parser.add_argument('--delta_mag_lim', default=(None,None), nargs=2, type=float, help='limits on mag - refcat_mainfilter (default=%(default)s)')
+        parser.add_argument('--Nbright4match', default=None, type=int, help='Use only Nbright brightest objects for matching to the ref cat (default=%(default)s)')
         parser.add_argument('--Nbright', default=None, type=int, help='Use only Nbright brightest objects in image that are matched to refcat for alignment (default=%(default)s)')
+        parser.add_argument('--xshift', default=0.0, type=float, help='added to the x coordinate before calculating ra,dec (only impacts ra,dec, not x). This can be used to correct for large shifts before matching! (default=%(default)s)')
+        parser.add_argument('--yshift', default=0.0, type=float, help='added to the y coordinate before calculating ra,dec (only impacts ra,dec, not y). This can be used to correct for large shifts before matching! (default=%(default)s)')
         parser.add_argument('-p','--showplots', default=0, action='count',help='showplots=1: most important plots. showplots=2: all plots (debug/test/finetune)')
         parser.add_argument('--saveplots', default=0, action='count',help='saveplots=1: most important plots. saveplots=2: all plots (debug/test/finetune)')
         parser.add_argument('-t','--savephottable', default=0, action='count',help='Save the final photometry table')
@@ -442,7 +448,11 @@ class jwst_wcs_align(apply_distortion_singleim):
 
     # make some rough cuts on dmag, d2d, and Nbright
     # sets phot.ixs_use and phot.ixs_notuse
-    def initial_cut(self, phot=None, d2d_max=None,dmag_max=None,Nbright=None, ixs=None):
+    def initial_cut(self, phot=None, d2d_max=None,dmag_max=None,
+                    sharpness_lim = (None, None), # sharpness limits
+                    roundness1_lim = (None, None), # roundness1 limits 
+                    delta_mag_lim = (None,None), # limits on mag - refcat_mainfilter!
+                    Nbright=None, ixs=None):
         if phot is None:
             phot=self.phot
             
@@ -452,6 +462,17 @@ class jwst_wcs_align(apply_distortion_singleim):
             ixs_use = phot.ix_inrange('d2d',None,3*d2d_max,indices=ixs_use)
         if dmag_max is not None:
             ixs_use = phot.ix_inrange('dmag',None,dmag_max,indices=ixs_use)
+        if (sharpness_lim[0] is not None) or (sharpness_lim[1] is not None):
+            print(f'########### !!!!!!!!!! SHARPNESS ={sharpness_lim}CUT!!!')
+            ixs_use = phot.ix_inrange('sharpness',sharpness_lim[0],sharpness_lim[1],indices=ixs_use)
+        if (roundness1_lim[0] is not None) or (roundness1_lim[1] is not None):
+            print(f'########### !!!!!!!!!! roundness1={roundness1_lim} CUT!!!')
+            ixs_use = phot.ix_inrange('roundness1',roundness1_lim[0],roundness1_lim[1],indices=ixs_use)
+        if (delta_mag_lim[0] is not None) or (delta_mag_lim[1] is not None):
+            print(f'########### !!!!!!!!!! delta_mag_lim={delta_mag_lim} CUT!!!')
+            if phot.refcat_mainfilter is None:
+                raise RuntimeError('Cannot do delta_mag cut since the refcat_mainfilter is not defined!')
+            ixs_use = phot.ix_inrange('delta_mag',delta_mag_lim[0],delta_mag_lim[1],indices=ixs_use)
         if Nbright is not None:
             ixs_sort = phot.ix_sort_by_cols(['mag'],indices=ixs_use)
             ixs_use = ixs_sort[:Nbright]
@@ -529,7 +550,7 @@ class jwst_wcs_align(apply_distortion_singleim):
             tweakreg.snr_threshold = 50
             tweakreg.separation = 9
             tweakreg.searchrad = 0.5
-            tweakreg.minobj = 50
+            tweakreg.minobj = 10
             tweakreg.min_gaia = 30
             tweakreg.xoffset = 0
             tweakreg.yoffset = 0
@@ -571,6 +592,9 @@ class jwst_wcs_align(apply_distortion_singleim):
                                  ycol='y',
                                  d2d_max = None,
                                  dmag_max = 0.1,
+                                 sharpness_lim = (None, None), # sharpness limits
+                                 roundness1_lim = (None, None), # roundness1 limits 
+                                 delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
                                  Nbright=None,
                                  ixs=None,
                                  showplots=1,
@@ -579,13 +603,13 @@ class jwst_wcs_align(apply_distortion_singleim):
                                  outbasename=None,
                                  plots_dxdy_delta_pix_ylim=7,
                                  # histo parameters
-                                 binsize_px = 0.1, # this is the binsize of the dx/dy histograms
+                                 binsize_px = 0.2, # this is the binsize of the dx/dy histograms
                                  bin_weights_flag=True,# If bin_weights_flag is set to True, 
                                                        #then the dx/dy bins are weighted by 
                                                        # the flux of the detection.
                                  slope_min=-10.0/2048.0, 
                                  slope_Nsteps = 200, # slope_max=-slope_min, slope_stepsize=(slope_max-slope_min)/slope_Nsteps
-                                 Nfwhm = 2.0 
+                                 Nfwhm = 2.5 
                                  ):
         if phot is None:
             phot=self.phot
@@ -602,6 +626,10 @@ class jwst_wcs_align(apply_distortion_singleim):
         # Calculate dx and dy
         phot.t['dx'] = phot.t[refcat_xcol] - phot.t[xcol]
         phot.t['dy'] = phot.t[refcat_ycol] - phot.t[ycol]
+
+        # Calculate the difference between JWST mag and main filter of reference catalog
+        if phot.refcat_mainfilter is not None:
+            phot.t['delta_mag'] = phot.t['mag'] - phot.t[phot.refcat_mainfilter]
         
         # do some first very rough cuts.
         # sets phot.ixs_use and phot.ixs_notuse
@@ -609,6 +637,9 @@ class jwst_wcs_align(apply_distortion_singleim):
         ixs = self.initial_cut(phot=phot,
                                d2d_max=d2d_max,
                                dmag_max=dmag_max,
+                               sharpness_lim = sharpness_lim, # sharpness limits
+                               roundness1_lim = roundness1_lim, # roundness1 limits 
+                               delta_mag_lim = delta_mag_lim, # limits on mag-refcat_mainfilter
                                Nbright=Nbright,
                                ixs=ixs)
         
@@ -624,14 +655,31 @@ class jwst_wcs_align(apply_distortion_singleim):
         if showplots>1:
             sp = initplot(1,3)
             # plot the residuals
-            title = f'Initial cut: d2d_max={d2d_max},\ndmag_max={dmag_max}, Nbright={Nbright}'
-            phot.t.loc[phot.ixs_notuse].plot('sharpness','mag',ax=sp[0],**plot_style['do_not_use_data'])
-            phot.t.loc[phot.ixs_use].plot('sharpness','mag',ax=sp[0],ylabel='mag',title=title,**plot_style['good_data'])
-            phot.t.loc[phot.ixs_notuse].plot('y','dx',ax=sp[1],ylim=dx_plotlim,**plot_style['do_not_use_data'])
-            phot.t.loc[phot.ixs_use].plot('y','dx',ax=sp[1],ylim=dx_plotlim, ylabel='dx [pixel]',**plot_style['good_data'])
-            phot.t.loc[phot.ixs_notuse].plot('x','dy',ax=sp[2],ylim=dx_plotlim,**plot_style['do_not_use_data'])
-            phot.t.loc[phot.ixs_use].plot('x','dy',ax=sp[2],ylim=dy_plotlim,ylabel='dy [pixel]',**plot_style['good_data'])
-            for i in range(3): sp[i].get_legend().remove()
+            title = f'Initial cut: d2d_max={d2d_max},\ndmag_max={dmag_max}'
+            title_Nbright = f'Nbright={Nbright}'
+            title_deltamag = f'delta_mag_lim={delta_mag_lim}'
+            phot.t.loc[phot.ixs_notuse].plot('y','dx',ax=sp[0],ylim=dx_plotlim,title=title,**plot_style['do_not_use_data'])
+            phot.t.loc[phot.ixs_use].plot('y','dx',ax=sp[0],ylim=dx_plotlim, ylabel='dx [pixel]',**plot_style['good_data'])
+            phot.t.loc[phot.ixs_notuse].plot('x','dy',ax=sp[1],ylim=dx_plotlim,**plot_style['do_not_use_data'])
+            phot.t.loc[phot.ixs_use].plot('x','dy',ax=sp[1],ylim=dy_plotlim,ylabel='dy [pixel]',**plot_style['good_data'])
+            phot.t.loc[phot.ixs_notuse].plot('x','y',ax=sp[2],**plot_style['do_not_use_data'])
+            phot.t.loc[phot.ixs_use].plot('x','y',ax=sp[2],ylabel='y [pixel]',**plot_style['good_data'])
+            phot.t.loc[phot.ixs_notuse].plot('sharpness','mag',ax=sp[3],**plot_style['do_not_use_data'])
+            phot.t.loc[phot.ixs_use].plot('sharpness','mag',ax=sp[3],title=title_Nbright,ylabel='mag',**plot_style['good_data'])
+            if phot.refcat_mainfilter is not None:
+                if phot.refcat_maincolor is not None:
+                    phot.t.loc[phot.ixs_notuse].plot(phot.refcat_maincolor,'delta_mag',ax=sp[4],**plot_style['do_not_use_data'])
+                    phot.t.loc[phot.ixs_use].plot(phot.refcat_maincolor,'delta_mag',title=title_deltamag,ax=sp[4],ylabel=f'mag - {phot.refcat_mainfilter}',**plot_style['good_data'])
+                    phot.t.loc[phot.ixs_notuse].plot(phot.refcat_maincolor,phot.refcat_mainfilter,ax=sp[5],**plot_style['do_not_use_data'])
+                    phot.t.loc[phot.ixs_use].plot(phot.refcat_maincolor,phot.refcat_mainfilter,ax=sp[5],ylabel=f'{phot.refcat_mainfilter}',**plot_style['good_data'])
+                    for i in range(6): sp[i].get_legend().remove()
+                else:
+                    phot.t.loc[phot.ixs_notuse].plot(phot.refcat_mainfilter,'delta_mag',title=title_deltamag,ax=sp[4],**plot_style['do_not_use_data'])
+                    phot.t.loc[phot.ixs_use].plot(phot.refcat_mainfilter,'delta_mag',ax=sp[4],ylabel=f'mag - {wcs_align.phot.refcat_mainfilter}',**plot_style['good_data'])
+                    for i in range(5): sp[i].get_legend().remove()
+            else:
+                for i in range(4): sp[i].get_legend().remove()
+
             plt.tight_layout()
             plt.show()
             #if showplots: plt.show() 
@@ -795,8 +843,11 @@ class jwst_wcs_align(apply_distortion_singleim):
         #xcol=f'{phot.refcat.short}_x'
         #ycol=f'{phot.refcat.short}_y'
 
-        phot.t.drop(columns=['dx','dy',refcat_xcol,refcat_ycol,f'{phot.refcatshort}_x_idl',f'{phot.refcatshort}_y_idl',f'{phot.refcatshort}_d2d'],inplace=True)    
+        phot.t.drop(columns=['dx','dy',refcat_xcol,refcat_ycol],inplace=True)    
+        if f'{phot.refcatshort}_d2d' in phot.t.columns:
+            phot.t.drop(columns=[f'{phot.refcatshort}_d2d'],inplace=True)    
             
+        
         image_model = datamodels.ImageModel(tweakregfilename)
         # recalculate the x,y of the ref cat objects
         world_to_detector = image_model.meta.wcs.get_transform('world', 'detector')
@@ -866,7 +917,13 @@ class jwst_wcs_align(apply_distortion_singleim):
                 # find best matches to refcut
                 d2d_max = None, # maximum distance refcat to source in image
                 dmag_max = 0.1, # maximum uncertainty of source 
-                Nbright=None,    # U/se only the brightest Nbright sources from image
+                sharpness_lim = (None, None), # sharpness limits
+                roundness1_lim = (None, None), # roundness1 limits 
+                delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
+                Nbright4match=None, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
+                Nbright=None,    # Use only the brightest Nbright sources from image after all other cuts
+                xshift=0.0,# added to the x coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
+                yshift=0.0, # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
                 showplots=0,
                 saveplots=0,
                 savephottable=0
@@ -895,13 +952,19 @@ class jwst_wcs_align(apply_distortion_singleim):
                               load_photcat_if_exists=load_photcat_if_exists,
                               rematch_refcat=rematch_refcat,
                               overwrite=overwrite,
-                              SNR_min=SNR_min)
+                              Nbright4match=Nbright4match,
+                              SNR_min=SNR_min,
+                              xshift=xshift,
+                              yshift=yshift)
 
         matching_outbasename = re.sub('\.fits$','',calimname)
         if (matching_outbasename == calimname): raise RuntimeError(f'Could not remove .fits from {calimname}')        
 
         ixs_bestmatch= self.find_good_refcat_matches(d2d_max = d2d_max,
                                                  dmag_max = dmag_max,
+                                                 sharpness_lim = sharpness_lim, # sharpness limits
+                                                 roundness1_lim = roundness1_lim, # roundness1 limits 
+                                                 delta_mag_lim = delta_mag_lim, # limits on mag-refcat_mainfilter
                                                  Nbright = Nbright,
                                                  showplots=showplots,
                                                  saveplots=saveplots,
@@ -953,7 +1016,13 @@ if __name__ == '__main__':
                      SNR_min = args.SNR_min,
                      d2d_max = args.d2d_max, # maximum distance refcat to source in image
                      dmag_max = args.dmag_max, # maximum uncertainty of source 
+                     sharpness_lim = args.sharpness_lim, # sharpness limits
+                     roundness1_lim = args.roundness1_lim, # roundness1 limits 
+                     delta_mag_lim =  args.delta_mag_lim, # limits on mag-refcat_mainfilter
+                     Nbright4match=args.Nbright4match, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                      Nbright=args.Nbright,    # U/se only the brightest Nbright sources from image
+                     xshift=args.xshift,# added to the x coordinate before calculating ra,dec (only impacts ra,dec, not x). This can be used to correct for large shifts before matching!
+                     yshift=args.yshift, # added to the y coordinate before calculating ra,dec (only impacts ra,dec, not y). This can be used to correct for large shifts before matching!
                      showplots=args.showplots,
                      saveplots=args.saveplots,# 
                      savephottable=args.savephottable

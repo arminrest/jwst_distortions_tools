@@ -128,17 +128,17 @@ class apply_distortion_singleim:
             makepath(outdir)
 
         if os.path.isfile(assignwcsfilename):
-            if not overwrite:
-                if skip_if_exists:
-                    # return False means that rate2cal did not run
-                    print(f'Image {assignwcsfilename} already exists, skipping recreating it...')
-                    return(False,assignwcsfilename)
+            if skip_if_exists:
+                # return False means that rate2cal did not run
+                print(f'Image {assignwcsfilename} already exists, skipping recreating it...')
+                return(False,assignwcsfilename)
+            else:
+                if overwrite:
+                    print(f'WARNING! {assignwcsfilename} exists, deleting it since "overwrite" is set!')
+                    # make sure cal frame is deleted
+                    rmfile(assignwcsfilename)
                 else:
                     raise RuntimeError(f'Image {assignwcsfilename} already exists! exiting. If you want to overwrite or skip, you can use "overwrite" or "skip_if_exists"')
-            else:
-                print(f'WARNING! {assignwcsfilename} exists, deleting it since "overwrite" is set!')
-                # make sure cal frame is deleted
-                rmfile(assignwcsfilename)
                 
         print(f'Creating {assignwcsfilename}')
         step.run(cal_image)

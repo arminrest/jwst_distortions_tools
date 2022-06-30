@@ -126,6 +126,7 @@ class coeffs2asdf(pdastroclass):
 
         parser.add_argument('coeff_filepatterns', nargs='+', type=str, default=None, help='list of coefficient file(pattern)s')
 
+        parser.add_argument('--siaf_xml_file',default=None, help='pass the siaf xml file. This can be used to pass new alignments etc (pattern)s')
         parser.add_argument('-v','--verbose', default=0, action='count')
 
         return(parser)
@@ -362,7 +363,7 @@ class coeffs2asdf(pdastroclass):
                                  siaf_xml_file=None,
                                  sci_filter=None,
                                  sci_pupil=None, sci_subarr=None, sci_exptype=None, 
-                                 history=None,
+                                 history=[],
                                  author=None, descrip=None, pedigree=None,
                                  useafter=None):
         """
@@ -421,8 +422,8 @@ class coeffs2asdf(pdastroclass):
             List of exposure types to which this distortion solution applies
             If None, self.metadata['exptype'][self.camera] will be used.
     
-        history : str
-            Text to be added as a HISTORY entry in the output reference file
+        history : list
+            list of text to be added as a HISTORY entry in the output reference file
     
         author : str
             Value to place in the output file's Author metadata entry
@@ -521,9 +522,11 @@ class coeffs2asdf(pdastroclass):
         if siaf_xml_file is None:
             print('Using default SIAF version in pysiaf.')
             inst_siaf = pysiaf.Siaf(self.instrument.lower())
+            history.append('Using default SIAF version in pysiaf.')
         else:
-            print(f'SIAF to be loaded from {siaf_xml_file}...')
+            print(f'###### IMPORTANT!!!!\n###SIAF to be loaded from {siaf_xml_file} for instrument {self.instrument.lower()}...\n###### IMPORTANT!!!!')
             inst_siaf = pysiaf.Siaf(filename=siaf_xml_file, instrument=self.instrument.lower())
+            history.append(f'Using siaf={os.path.basename(siaf_xml_file)}')
     
         siaf = inst_siaf[self.aperture]
     
@@ -714,22 +717,27 @@ class coeffs2asdf(pdastroclass):
          
         entry = util.create_history_entry(history_mainentry, software=sdict)
         d.history = [entry]
-        if history is not None:
+        if (history is not None):
             for entry in history:
+                print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!',entry)
                 d.history.append(util.create_history_entry(entry))
         
         return(d)
     
     
     def coefffile2adfs(self, filename, filt=None, outname=None, 
+                       siaf_xml_file=None,
                        savemeta=True,
-                       history=None,author=None, 
-                       descrip=None, pedigree=None,
+                       history=[],
+                       author=None, 
+                       descrip=None, 
+                       pedigree=None,
                        useafter=None):
         # load the file
         self.load_coeff_file(filename)
 
         distcoeff = self.create_asdf_reference_for_distortion(filt=filt,
+                                                              siaf_xml_file=siaf_xml_file,
                                                               history=history,
                                                               author=author, 
                                                               descrip=descrip, 
@@ -771,4 +779,15 @@ if __name__ == '__main__':
         else:
             outname = filename + '.asdf'
 
-        coeffs.coefffile2adfs(filename,outname=outname)
+        # get the filter!
+        m = re.search('_(f\d\d\d[wmn])_',filename)
+        if m is None:
+            m = re.search('_(f\d\d\dw2)_',filename)
+        if m is not None:
+            filt = m.groups()[0]
+        else:
+            filt=None
+            print('####### !!!!! WARNING!!! Could not determine the filter from filename!')
+           
+
+        coeffs.coefffile2adfs(filename,outname=outname,filt=filt,siaf_xml_file=args.siaf_xml_file)
