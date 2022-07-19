@@ -79,6 +79,17 @@ def get_GAIA_sources_NP(f,pm=True,radius_factor=2):
     ok = (np.isfinite(tb_gaia['x'])) & (np.isfinite(tb_gaia['y'])) 
     return tb_gaia[ok]
 
+def get_refcat_file(refcatfilename,racol=None,deccol=None):
+    cat = pdastroclass()
+    cat.load(refcatfilename)
+    if racol is not None:
+        if not (racol in cat.t.columns):
+            raise RuntimeError(f'Cannot find racol {racol} in columns {cat.t.columns}')
+    if deccol is not None:
+        if not (deccol in cat.t.columns):
+            raise RuntimeError(f'Cannot find deccol {deccol} in columns {cat.t.columns}')
+    return(cat.t)
+
 def get_hawki_cat(ra0,dec0,radius_deg,radius_factor=1.1,
                   columns=['ID','ra','dec','ra_error_mas','dec_error_mas','J2mag','K2mag','J2_K2','q_Jmag','gdr2_source_id','sep_arcmin']):
 
@@ -920,7 +931,15 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.maincolor = 'J2_K2'
         else:
             if os.path.isfile(refcatname):
-                pass
+                # give default column names
+                self.refcat.racol = 'ra'
+                self.refcat.deccol = 'dec'
+                self.refcat.name = os.path.basename(refcatname)
+                self.refcat.short = 'reffile'
+                self.refcat.cols2copy = []
+                self.refcat.mainfilter = 'f814w'
+                self.refcat.mainfilter_err = None
+                self.refcat.maincolor = None
             else:
                 raise RuntimeError(f'Don\'t know waht to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
                 
@@ -957,7 +976,9 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.t,self.refcat.racol,self.refcat.deccol = get_hawki_cat(ra0,dec0,radius_deg)
         else:
             if os.path.isfile(refcatname):
-                pass
+                print(f'LOADING refcat {refcatname}')
+                self.refcat.t = get_refcat_file(refcatname,racol=self.refcat.racol,deccol=self.refcat.deccol)
+                self.refcat.t['ID']=self.refcat.getindices()
             else:
                 raise RuntimeError(f'Don\'t know waht to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
                         
@@ -1135,13 +1156,21 @@ class jwst_photclass(pdastrostatsclass):
 
         # copy over the relevant columns from refcat. The columns are preceded with '{refcatshort}_'
         cols2copy = [self.refcat.racol,self.refcat.deccol,'x','y','ID']
+        if self.refcat.mainfilter is not None:
+            cols2copy.append(self.refcat.mainfilter)
+        if self.refcat.mainfilter_err is not None:
+            cols2copy.append(self.refcat.mainfilter_err)
+        if self.refcat.maincolor is not None:
+            cols2copy.append(self.refcat.maincolor)
         cols2copy.extend(self.refcat.cols2copy)
+        cols2copy = unique(cols2copy)
 
         #self.refcatshort = refcatshort
         #self.refcat_racol = None
         #self.refcat_deccol = None
         for refcat_col in cols2copy:
-            
+            if not (refcat_col in self.refcat.t.columns):
+                raise RuntimeError(f'Trying to copy column {refcat_col}, but this column is not in {self.refcat.t.columns}')
             if refcat_col == self.refcat.racol:
                 obj_col = f'{refcatshort}_ra'
                 #self.refcat_racol = f'{refcatshort}_ra'

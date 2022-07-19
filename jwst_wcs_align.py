@@ -233,7 +233,7 @@ def find_info_for_maxval(xvals,yvals,use_firstindex_if_multiple=True):
     
     return(xvals[ix_best],yvals[ix_best],ix_best,fwhm,multiple_max)
 
-# straight line. Sloppy: use global slope and intercept
+# straight line.
 def f(val,slope,intercept):
     return(val*slope+intercept)
 
@@ -340,7 +340,7 @@ def sigmacut_d_rot(phot,ixs,
                    spi=[0,1,2]):
 
     ### recover the slope and intercept of the best binning
-    phot.t.loc[ixs,d_col_rot] = phot.t.loc[ixs,d_col] - f(phot.t.loc[ixs,col],slope,intercept)
+    phot.t[d_col_rot] = phot.t[d_col] - f(phot.t[col],slope,intercept)
     
     # Now make the rough cut! only keep data for with dx_rotated within  d_rot_bestguess+-rough_cut_px
     ixs_roughcut = phot.ix_inrange(d_col_rot,d_rot_bestguess-rough_cut_px,d_rot_bestguess+rough_cut_px,indices=ixs)

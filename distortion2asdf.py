@@ -106,12 +106,19 @@ class coeffs2asdf(pdastroclass):
 
         # EXPTYPE metadata-----------------------------------------------
         self.metadata['exptype']={}
+        """
         self.metadata['exptype']['NRC_SW']=['NRC_IMAGE', 'NRC_TSIMAGE', 'NRC_FLAT', 'NRC_LED',
                                             'NRC_WFSC', 'NRC_TACQ', 'NRC_TACONFIRM', 'NRC_FOCUS',
                                             'NRC_DARK', 'NRC_WFSS', 'NRC_TSGRISM', 'NRC_GRISM']
         self.metadata['exptype']['NRC_LW']=AandB(self.metadata['exptype']['NRC_SW'],['NRC_WFSS', 'NRC_TSGRISM', 'NRC_GRISM'],keeporder=True)
-        self.metadata['exptype']['NIS']=['NIS_IMAGE', 'NIS_AMI', 'NIS_WFSS', 'NIS_TACQ', 'NIS_FOCUS', 'NIS_TACONFIRM']
+        """
+        
 
+        self.metadata['exptype']['NRC_SW']=['NRC_DARK','NRC_FLAT','NRC_FOCUS','NRC_GRISM','NRC_IMAGE','NRC_LED','NRC_TACONFIRM','NRC_TACQ','NRC_TSGRISM','NRC_TSIMAGE','NRC_WFSC','NRC_WFSS']
+        self.metadata['exptype']['NRC_LW']=self.metadata['exptype']['NRC_SW']
+
+        self.metadata['exptype']['NIS']=['NIS_IMAGE', 'NIS_AMI', 'NIS_WFSS', 'NIS_TACQ', 'NIS_FOCUS', 'NIS_TACONFIRM']
+        
         # subarray metadata-----------------------------------------------
         self.metadata['subarr']={}
         self.metadata['subarr']['FULL']=['GENERIC']
@@ -685,7 +692,7 @@ class coeffs2asdf(pdastroclass):
         d.meta.reftype = 'DISTORTION'
     
         if author is None:
-            author = os.path.expanduser('~')
+            author = os.path.basename(os.path.expanduser('~'))
         d.meta.author = author
     
         d.meta.litref = "https://github.com/arminrest/jwst_distortions_tools/distortion2asdf.py"
@@ -720,7 +727,20 @@ class coeffs2asdf(pdastroclass):
         if (history is not None):
             for entry in history:
                 print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!',entry)
+                #histentry = util.create_history_entry(history_2)
                 d.history.append(util.create_history_entry(entry))
+
+        print(d.history)
+        #sys.exit(0)
+
+        #entry = util.create_history_entry(history_entry, software=sdict)
+        #d.history = [entry]
+        
+        
+        #Create additional HISTORY entries
+        #entry2 = util.create_history_entry(history_2)
+        #d.history.append(entry2)
+
         
         return(d)
     
@@ -752,9 +772,12 @@ class coeffs2asdf(pdastroclass):
                 metaoutname +='.meta.txt'
                 rmfile(metaoutname)
                 print('meta data: \n',distcoeff.meta.instance)
-                s = '\n'.join([f'{k}:{distcoeff.meta.instance[k]}' for k in distcoeff.meta.instance])
-                print(s)
-                open(metaoutname,'w').writelines(s)
+                metalist = '\n'.join([f'{k}:{distcoeff.meta.instance[k]}' for k in distcoeff.meta.instance])
+                histlist = '\n'.join([f'HISTORY:{k}' for k in distcoeff.history])
+                print(metalist)
+                print(histlist)
+                metalist+='\n'+histlist
+                open(metaoutname,'w').writelines(metalist)
                 print(f'Distortion coefficients meta data saved to {metaoutname}')
             #    open()
         return(distcoeff)
