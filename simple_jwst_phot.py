@@ -862,19 +862,20 @@ class jwst_photclass(pdastrostatsclass):
             table_aper.add_column(phot['aper_bkg'], name=self.colname('aper_bkg',rad))
             table_aper.add_column(phot['aper_sum_bkgsub'], name=self.colname('aper_sum_bkgsub',rad))
             table_aper.add_column(fluxerr, name=self.colname('flux_err',rad))
-            table_aper.add_column(phot['mag'], name=self.colname('mag',rad))
-            table_aper.add_column(phot['magerr'], name=self.colname('dmag',rad))
-    
+            table_aper.add_column(phot['mag'], name='mag')
+            table_aper.add_column(phot['magerr'], name='dmag')
+
             #if rad == self.radius_for_mag_px:
                 #table_aper['mag'] = -2.5 * np.log10(table_aper[self.colname('aper_sum_bkgsub',rad)])
                 #table_aper['dmag'] = 1.086 * (table_aper[self.colname('flux_err',rad)] / 
                 #                              table_aper[self.colname('aper_sum_bkgsub',rad)])      
+
         table_aper['x'] = self.found_stars['xcentroid']
         table_aper['y'] = self.found_stars['ycentroid']
         table_aper['sharpness'] = self.found_stars['sharpness']
         table_aper['roundness1'] = self.found_stars['roundness1']
         table_aper['roundness2'] = self.found_stars['roundness2']
-    
+        table_aper = table_aper[~np.isnan(table_aper['mag'])]
         toc = time.perf_counter()
         print("Time Elapsed:", toc - tic)
     
