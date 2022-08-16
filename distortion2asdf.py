@@ -88,15 +88,20 @@ class coeffs2asdf(pdastroclass):
         self.metadata['imaging_filter']={}
         #NIRCam mapping
         self.metadata['imaging_filter']['NIRCAM']={}
-        self.metadata['imaging_filter']['NIRCAM']['F210M']=['F182M','F187N','F210M','F212N']
         self.metadata['imaging_filter']['NIRCAM']['F070W']=['F070W','F090W']
-        #self.metadata['imaging_filter']['NIRCAM']['F150W']=['F150W','F115W','F140M','F162M','F164N','F150W2']
-        self.metadata['imaging_filter']['NIRCAM']['F150W']=['F150W','F115W','F140M','F150W2']
+        if 1==0:
+            # For now, skip the F210M and F335M distortions since we only have them for the A module
+            self.metadata['imaging_filter']['NIRCAM']['F150W']=['F150W','F115W','F140M','F150W2','F182M','F187N','F210M','F212N']
+            self.metadata['imaging_filter']['NIRCAM']['F356W']=['F322W2','F356W','F360M','F335M']
+        else:
+            self.metadata['imaging_filter']['NIRCAM']['F210M']=['F182M','F187N','F210M','F212N']
+            self.metadata['imaging_filter']['NIRCAM']['F150W']=['F150W','F115W','F140M','F150W2']
+            self.metadata['imaging_filter']['NIRCAM']['F335M']=['F335M']
+            self.metadata['imaging_filter']['NIRCAM']['F356W']=['F322W2','F356W','F360M']
+        
         self.metadata['imaging_filter']['NIRCAM']['F200W']=['F200W']
         self.metadata['imaging_filter']['NIRCAM']['F277W']=['F250M','F277W','F300M']
-        self.metadata['imaging_filter']['NIRCAM']['F356W']=['F322W2','F356W','F360M']
         self.metadata['imaging_filter']['NIRCAM']['F444W']=['F410M','F430M','F444W','F460M','F480M']
-        self.metadata['imaging_filter']['NIRCAM']['F335M']=['F335M']
         # This applies for images with MASKs in the pupil
         self.metadata['imaging_filter']['NIRCAMMASK']={}
         self.metadata['imaging_filter']['NIRCAMMASK']['F210M']=['F200W','F182M','F187N','F210M','F212N']
