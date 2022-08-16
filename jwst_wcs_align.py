@@ -674,7 +674,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         dx_plotlim = (dx_median-plots_dxdy_delta_pix_ylim,dx_median+plots_dxdy_delta_pix_ylim)
 
         if showplots>1:
-            sp = initplot(1,3)
+            sp = initplot(2,3)
             # plot the residuals
             title = f'Initial cut: d2d_max={d2d_max},\ndmag_max={dmag_max}'
             title_Nbright = f'Nbright={Nbright}'
