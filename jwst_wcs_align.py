@@ -1017,6 +1017,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     wcs_align.verbose=args.verbose
+    wcs_align.replace_sip = args.replace_sip
     #wcs_align.calphot=jwst_photclass()
     
     wcs_align.set_outdir(args.outrootdir, args.outsubdir)
