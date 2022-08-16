@@ -14,9 +14,14 @@ import glob as glob
 
 import numpy as np
 
+import urllib
+import scipy
+
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats, SigmaClip
-from astropy.table import Table
+from astropy.table import Table,vstack
+from astropy import wcs
+
 
 from photutils.detection import DAOStarFinder
 from photutils.background import MMMBackground, MADStdBackgroundRMS, Background2D
@@ -39,6 +44,65 @@ from astropy.coordinates import SkyCoord
 from pdastro import pdastroclass,pdastrostatsclass,makepath4file,unique,AnotB,AorB,AandB,rmfile
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 
+def get_jwst_ap_corr_table():
+    
+    cnames = ['filter', 'pupil', 'wave', 'r10', 'r20', 'r30', 'r40', 'r50', 'r60', 'r70', 'r80',
+                                        'r85', 'r90', 'sky_flux_px', 'apcorr10', 'apcorr20', 'apcorr30', 'apcorr40',
+                                        'apcorr50', 'apcorr60', 'apcorr70', 'apcorr80', 'apcorr85', 'apcorr90', 'sky_in',
+                                        'sky_out']
+    
+    if not os.path.isfile('./jwst_aperture_corrections.txt'):
+        if os.path.isfile('./aperture_correction_table.txt'):
+            ap_tab = './aperture_correction_table.txt'
+        else:
+            print("Downloading the nircam aperture correction table")
+
+            boxlink_apcorr_table = 'https://data.science.stsci.edu/redirect/JWST/jwst-data_analysis_tools/stellar_photometry/aperture_correction_table.txt'
+            boxfile_apcorr_table = './aperture_correction_table.txt'
+            urllib.request.urlretrieve(boxlink_apcorr_table, boxfile_apcorr_table)
+            ap_tab = './aperture_correction_table.txt'
+
+        aper_table1 = Table.read(ap_tab,format='ascii',names=cnames)
+        if os.path.isfile('./jwst_miri_apcorr_0008.fits'):
+            ap_tab = Table.read('jwst_miri_apcorr_0008.fits',format='fits')
+        else:
+            print("Downloading the miri aperture correction table")
+            urllib.request.urlretrieve('https://jwst-crds.stsci.edu/unchecked_get/references/jwst/jwst_miri_apcorr_0008.fits',
+                                       'jwst_miri_apcorr_0008.fits')
+        tab = Table.read('jwst_miri_apcorr_0008.fits',format='fits')
+        rows = {k:[] for k in cnames}
+        tab=tab[tab['subarray']=='FULL']
+        tab.rename_column('subarray','pupil')
+        tab.rename_column('skyin','sky_in')
+        tab.rename_column('skyout','sky_out')
+        for i in range(len(np.unique(tab['filter']))):
+            temp_tab = tab[tab['filter']==np.unique(tab['filter'])[i]]
+            for c in cnames:
+                if c in tab.colnames:
+                    rows[c].append(temp_tab[0][c])
+                elif c=='wave':
+                    rows[c].append(int(temp_tab[0]['filter'][1:-1]))
+                elif c=='sky_flux_px':
+                    rows[c].append(np.nan)
+                elif c.startswith('r'):
+                    ind = np.where(temp_tab['eefraction']==float(c[1:])/100)[0]
+                    if len(ind)>0:
+                        rows[c].append(temp_tab[ind]['radius'])
+                        rows['apcorr'+c[1:]].append(temp_tab[ind]['apcorr'])
+                    else:
+                        rows[c].append(np.nan)
+                        rows['apcorr'+c[1:]].append(np.nan)
+        
+        aper_table2 = Table(rows)
+        for k in aper_table1.colnames:
+            aper_table1[k] = np.array(aper_table1[k]).flatten()
+            aper_table2[k] = np.array(aper_table2[k]).flatten()
+        aper_table = vstack([aper_table1,aper_table2])
+        
+        aper_table.write('./jwst_aperture_corrections.txt',format='ascii')
+    else:
+        aper_table = Table.read('./jwst_aperture_corrections.txt',format='ascii')
+    return(aper_table)
 
 def get_GAIA_sources_NP(f,pm=True,radius_factor=2):
     """"Nor Pirzkal: Return a GAIA catalog/table that is location and time matched to an observation.
@@ -776,24 +840,42 @@ class jwst_photclass(pdastrostatsclass):
             error_scatter_sky = aperture.area * local_sky_stdev**2
             error_mean_sky = local_sky_stdev**2 * aperture.area**2 / annulus_aperture.area
             fluxerr = np.sqrt(error_poisson + error_scatter_sky + error_mean_sky)
-      
+            aper_table = get_jwst_ap_corr_table()
+            if filt not in aper_table['filter']:
+                raise RuntimeError('Do not have ap corr for filter %s'%filt)
+            aper_func = scipy.interpolate.interp1d(np.array([aper_table[aper_table['filter']==filt][x] for x in aper_table.colnames if x.startswith('r')]).flatten(),
+                                           np.array([aper_table[aper_table['filter']==filt][x] for x in aper_table.colnames if x.startswith('ap')]).flatten()
+                                           )
+    
+    
+            apcorr = aper_func(rad)
+            phot['aper_sum_bkgsub']*=apcorr
+            phot['magerr'] = 1.086 * fluxerr/phot['aper_sum_bkgsub']
+            imwcs = wcs.WCS(self.im['SCI',1])
+            
+            pixel_scale = wcs.utils.proj_plane_pixel_scales(imwcs)[0]  * imwcs.wcs.cunit[0].to('arcsec')
+            flux_units = u.MJy / u.sr * (pixel_scale * u.arcsec)**2
+            flux = phot['aper_sum_bkgsub']*flux_units
+            phot['mag'] = flux.to(u.ABmag).value
             table_aper.add_column(phot['aperture_sum'], name=self.colname('aper_sum',rad))
             table_aper.add_column(phot['annulus_median'], name=self.colname('annulus_median',rad))
             table_aper.add_column(phot['aper_bkg'], name=self.colname('aper_bkg',rad))
             table_aper.add_column(phot['aper_sum_bkgsub'], name=self.colname('aper_sum_bkgsub',rad))
             table_aper.add_column(fluxerr, name=self.colname('flux_err',rad))
-    
-            if rad == self.radius_for_mag_px:
-                table_aper['mag'] = -2.5 * np.log10(table_aper[self.colname('aper_sum_bkgsub',rad)])
-                table_aper['dmag'] = 1.086 * (table_aper[self.colname('flux_err',rad)] / 
-                                              table_aper[self.colname('aper_sum_bkgsub',rad)])      
+            table_aper.add_column(phot['mag'], name='mag')
+            table_aper.add_column(phot['magerr'], name='dmag')
+
+            #if rad == self.radius_for_mag_px:
+                #table_aper['mag'] = -2.5 * np.log10(table_aper[self.colname('aper_sum_bkgsub',rad)])
+                #table_aper['dmag'] = 1.086 * (table_aper[self.colname('flux_err',rad)] / 
+                #                              table_aper[self.colname('aper_sum_bkgsub',rad)])      
 
         table_aper['x'] = self.found_stars['xcentroid']
         table_aper['y'] = self.found_stars['ycentroid']
         table_aper['sharpness'] = self.found_stars['sharpness']
         table_aper['roundness1'] = self.found_stars['roundness1']
         table_aper['roundness2'] = self.found_stars['roundness2']
-    
+        table_aper = table_aper[~np.isnan(table_aper['mag'])]
         toc = time.perf_counter()
         print("Time Elapsed:", toc - tic)
     

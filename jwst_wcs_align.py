@@ -442,6 +442,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('-p','--showplots', default=0, action='count',help='showplots=1: most important plots. showplots=2: all plots (debug/test/finetune)')
         parser.add_argument('--saveplots', default=0, action='count',help='saveplots=1: most important plots. saveplots=2: all plots (debug/test/finetune)')
         parser.add_argument('-t','--savephottable', default=0, action='count',help='Save the final photometry table')
+        parser.add_argument('--replace_sip', default=True, action='store_true',help='Replace the tweaked fits image wcs with the SIP representation.')
         
 
         return(parser)
@@ -576,9 +577,29 @@ class jwst_wcs_align(apply_distortion_singleim):
         cal_data = [datamodels.open(cal_image)]
         tweakreg.run(cal_data)
 
-        #make sure the image got created
         if not os.path.isfile(tweakregfilename):
             raise RuntimeError(f'Image {tweakregfilename} did not get created!!')
+        if self.replace_sip:
+            dm = datamodels.open(tweakregfilename)
+            gwcs_header = dm.meta.wcs.to_fits_sip(max_pix_error=0.1,
+                                                   max_inv_pix_error=0.1,
+                                                   degree=3,
+                                                   npoints=128)
+            from astropy.io import fits
+            dm_fits = fits.open(tweakregfilename)
+
+            for key,value in dict(gwcs_header).items():
+                for k in dm_fits['SCI',1].header.keys():
+                    if k==key:
+                        dm_fits['SCI',1].header[key] = value
+                        break
+                #astropy.wcs.WCS(header=gwcs_header)
+            dm_fits.writeto(tweakregfilename,overwrite=True)
+        #print(imcat.meta['image_model'].wcs)
+        #print(gwcs_header)
+        #imcat.meta['image_model'].wcs = astropy.wcs.WCS(header=gwcs_header)
+        #make sure the image got created
+        
 
         # return True means that tweakrun did run
         return(True,tweakregfilename)
