@@ -443,8 +443,10 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--saveplots', default=0, action='count',help='saveplots=1: most important plots. saveplots=2: all plots (debug/test/finetune)')
         parser.add_argument('-t','--savephottable', default=0, action='count',help='Save the final photometry table')
         parser.add_argument('--replace_sip', default=True, action='store_true',help='Replace the tweaked fits image wcs with the SIP representation.')
+        parser.add_argument('--sip_err', default=0.1, type=float,help='max_pix_error for SIP transformation.')
+        parser.add_argument('--sip_degree', default=3, type=int,help='degree for SIP transformation.')
+        parser.add_argument('--sip_points', default=128, type=int,help='npoints for SIP transformation.')
         
-
         return(parser)
 
     # make some rough cuts on dmag, d2d, and Nbright
@@ -581,10 +583,10 @@ class jwst_wcs_align(apply_distortion_singleim):
             raise RuntimeError(f'Image {tweakregfilename} did not get created!!')
         if self.replace_sip:
             dm = datamodels.open(tweakregfilename)
-            gwcs_header = dm.meta.wcs.to_fits_sip(max_pix_error=0.1,
-                                                   max_inv_pix_error=0.1,
-                                                   degree=3,
-                                                   npoints=128)
+            gwcs_header = dm.meta.wcs.to_fits_sip(max_pix_error=self.sip_err,
+                                                   max_inv_pix_error=self.sip_err,
+                                                   degree=self.sip_degree,
+                                                   npoints=self.sip_points)
             from astropy.io import fits
             dm_fits = fits.open(tweakregfilename)
 
@@ -1018,6 +1020,9 @@ if __name__ == '__main__':
     
     wcs_align.verbose=args.verbose
     wcs_align.replace_sip = args.replace_sip
+    wcs_align.sip_err = args.sip_err
+    wcs_align.sip_degree = args.sip_degree
+    wcs_align.sip_points = args.sip_points
     #wcs_align.calphot=jwst_photclass()
     
     wcs_align.set_outdir(args.outrootdir, args.outsubdir)
