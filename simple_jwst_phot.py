@@ -839,7 +839,7 @@ class jwst_photclass(pdastrostatsclass):
             error_poisson = np.sqrt(phot['aperture_sum'])
             error_scatter_sky = aperture.area * local_sky_stdev**2
             error_mean_sky = local_sky_stdev**2 * aperture.area**2 / annulus_aperture.area
-            fluxerr = np.sqrt(error_poisson + error_scatter_sky + error_mean_sky)
+            fluxerr = np.sqrt(error_poisson**2 + error_scatter_sky + error_mean_sky)
             aper_table = get_jwst_ap_corr_table()
             if filt not in aper_table['filter']:
                 raise RuntimeError('Do not have ap corr for filter %s'%filt)
@@ -880,7 +880,6 @@ class jwst_photclass(pdastrostatsclass):
         print("Time Elapsed:", toc - tic)
     
         self.t = table_aper.to_pandas()
-    
         return table_aper
 
     def clean_phottable(self,SNR_min=3.0,indices=None):
@@ -1350,8 +1349,8 @@ class jwst_photclass(pdastrostatsclass):
                  photcat_loaded = False,
                  Nbright4match=None,
                  xshift=0.0,# added to the x coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
-                 yshift=0.0 # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
-                 ):
+                 yshift=0.0, # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
+                 ee_radius=None):
         print(f'\n### Doing photometry on {imagename}')
 
         # get the photfilename. photfilename='auto' removes fits from image name and replaces it with phot.txt

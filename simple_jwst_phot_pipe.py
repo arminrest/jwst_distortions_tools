@@ -819,7 +819,7 @@ class jwst_photclass(pdastrostatsclass):
                 error_poisson = np.sqrt(phot['aperture_sum'])
                 error_scatter_sky = aperture.area * local_sky_stdev**2
                 error_mean_sky = local_sky_stdev**2 * aperture.area**2 / annulus_aperture.area
-                fluxerr = np.sqrt(error_poisson + error_scatter_sky + error_mean_sky)
+                fluxerr = np.sqrt(error_poisson**2 + error_scatter_sky + error_mean_sky)
             else:
                 fluxerr = phot['aperture_sum_err']
             
