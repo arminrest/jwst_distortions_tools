@@ -8,7 +8,7 @@ Created on Thu Apr 21 14:32:42 2022
 
 import os,re,sys,copy
 from pdastro import makepath,rmfile,pdastroclass,AnotB
-from simple_jwst_phot import jwst_photclass
+from simple_jwst_phot_pipe import jwst_photclass
 #from jwst.tweakreg import TweakRegStep
 import tweakreg_hack
 import argparse
@@ -446,7 +446,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--sip_err', default=0.1, type=float,help='max_pix_error for SIP transformation.')
         parser.add_argument('--sip_degree', default=3, type=int,help='degree for SIP transformation.')
         parser.add_argument('--sip_points', default=128, type=int,help='npoints for SIP transformation.')
-        
+        parser.add_argument('--ee_radius', default=70, type=int, help='encircled energy percentage (multiples of 10) for photometry')
         return(parser)
 
     # make some rough cuts on dmag, d2d, and Nbright
@@ -949,7 +949,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                 yshift=0.0, # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
                 showplots=0,
                 saveplots=0,
-                savephottable=0
+                savephottable=0,
+                ee_radius=70
                 ):
             
         # apply distortion coefficients if wanted.
@@ -978,7 +979,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                               Nbright4match=Nbright4match,
                               SNR_min=SNR_min,
                               xshift=xshift,
-                              yshift=yshift)
+                              yshift=yshift,
+                              ee_radius=ee_radius)
 
         matching_outbasename = re.sub('\.fits$','',calimname)
         if (matching_outbasename == calimname): raise RuntimeError(f'Could not remove .fits from {calimname}')        
@@ -1052,6 +1054,7 @@ if __name__ == '__main__':
                      yshift=args.yshift, # added to the y coordinate before calculating ra,dec (only impacts ra,dec, not y). This can be used to correct for large shifts before matching!
                      showplots=args.showplots,
                      saveplots=args.saveplots,# 
-                     savephottable=args.savephottable
+                     savephottable=args.savephottable,
+                     ee_radius=args.ee_radius
                      )
     
