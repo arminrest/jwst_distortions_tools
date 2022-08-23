@@ -8,7 +8,7 @@ Created on Thu Apr 21 14:32:42 2022
 
 import os,re,sys,copy
 from pdastro import makepath,rmfile,pdastroclass,AnotB
-from simple_jwst_phot import jwst_photclass
+from simple_jwst_phot_pipe import jwst_photclass
 #from jwst.tweakreg import TweakRegStep
 import tweakreg_hack
 import argparse
