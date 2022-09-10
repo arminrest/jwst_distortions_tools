@@ -229,7 +229,12 @@ def find_info_for_maxval(xvals,yvals,use_firstindex_if_multiple=True):
         if yvals[ix_plus]<=0.5*yvals[ix_best]:
             break
         ix_plus+=1
+    if ix_plus==ix_minus:
+        print('Warning: problems getting FWHM!!! Setting it to binsize')
+        ix_minus=0
+        ix_plus=1
     fwhm = xvals[ix_plus]-xvals[ix_minus]
+    
     
     return(xvals[ix_best],yvals[ix_best],ix_best,fwhm,multiple_max)
 
@@ -392,12 +397,70 @@ def sigmacut_d_rot(phot,ixs,
         #                                 title=f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left')
     return(ixs_cut,ixs_roughcut)
 
+def histogram_cut(phot,ixs,d_col,col,
+                  Naxis_px, # Nx or Ny, depending on col
+                  d_col_rot='d_rot_tmp',
+                  binsize=0.1,
+                  bin_weights_flag=True,
+                  slope_min=-10.0/2048.0, # 
+                  slope_max=10.0/2048.0, # 
+                  slope_stepsize=1.0/2048,
+                  #This is the first rough cut:  get rid of everything d_rot_bestguess+-Nfwhm*fwhm,
+                  Nfwhm=2.0,
+                  showplots=0,
+                  sp=None
+                  ):
+
+    # initialize plot
+    if showplots>1:
+        if sp is None:
+            sp=initplot(2,3)
+    else:
+        sp=None
+    (rot_results,best_index) = rotate_d_and_find_binmax(phot,ixs,
+                                                        d_col,col,
+                                                        Naxis_px,
+                                                        d_col_rot=d_col_rot,
+                                                        binsize=binsize,
+                                                        bin_weights_flag=bin_weights_flag,
+                                                        slope_min=slope_min,
+                                                        slope_max=slope_max,
+                                                        slope_stepsize=slope_stepsize,
+                                                        showplots=showplots,
+                                                        sp=sp,
+                                                        spi=[0,1,2])
+
+
+    # Using the best dy_rotated, we first remove all entries with dy_rotated outside of dy_bestguess+-Nfwhm*fwhm
+    # Note that FWHM ~ 2.355 stdev, so Nfwhm*fwhm should be at least 3*stdev. This is the first ROUGH cut, with 
+    # which we just want to remove excessive amounts of outliers. Then a 3-sigma cut is done on the *rotated* dy
+    (ixs_cut,ixs_roughcut) = sigmacut_d_rot(phot,ixs,d_col,col,
+                                            rot_results.t.loc[best_index,'slope'],
+                                            rot_results.t.loc[best_index,'intercept'],
+                                            rot_results.t.loc[best_index,'d_bestguess'],
+                                            rough_cut_px = Nfwhm*rot_results.t.loc[best_index,'fwhm'],
+                                            binsize=binsize,
+                                            bin_weights_flag=bin_weights_flag,
+                                            showplots=showplots,
+                                            sp=sp,
+                                            spi=[3,4,5]
+                                            )
+    plt.tight_layout()   
+    return(ixs_cut,rot_results)
+
+
 
 class jwst_wcs_align(apply_distortion_singleim):
     def __init__(self):
         apply_distortion_singleim.__init__(self)
         self.phot=jwst_photclass()
         self.phot.ixs4use=None
+        
+        self.replace_sip = True
+        self.sip_err = 0.1
+        self.sip_degree = 3
+        self.sip_points = 128
+
         
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
         if parser is None:
