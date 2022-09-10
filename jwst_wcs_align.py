@@ -110,9 +110,9 @@ def plot_rotated(phot,ixs,d_col,col,
         if bin_weights_flag:
             phot.t.loc[ixs,d_col_rot].plot.hist(ax=sp[spi[1]],bins=bins,
                                                 weights=phot.t.loc[ixs,'__weights'],
-                                                xlim=histolim,color='blue')
+                                                xlim=histolim,color='blue',histtype='step')
         else:
-            phot.t.loc[ixs,d_col_rot].plot.hist(ax=sp[spi[1]],bins=bins,xlim=histolim,color='blue')
+            phot.t.loc[ixs,d_col_rot].plot.hist(ax=sp[spi[1]],bins=bins,xlim=histolim,color='blue',histtype='step')
         sp[spi[1]].set_xlabel(f'rotated {d_col}')
         #sp[spi[1]].get_legend().remove()
     return(sp)
