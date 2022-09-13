@@ -23,7 +23,7 @@ from apply_distortions_single_image import apply_distortion_singleim
 plot_style={}
 plot_style['good_data']={'style':'o','color':'blue', 'ms':5 ,'alpha':0.5}
 plot_style['cut_data']={'style':'o','color':'red', 'ms':5 ,'alpha':0.3}
-plot_style['do_not_use_data']={'style':'o','color':'gray', 'ms':1 ,'alpha':0.3}
+plot_style['do_not_use_data']={'style':'o','color':'gray', 'ms':3 ,'alpha':0.3}
 
 def initplot(nrows=1, ncols=1, figsize4subplot=5, **kwargs):
     print('hello')
@@ -115,6 +115,55 @@ def plot_rotated(phot,ixs,d_col,col,
             phot.t.loc[ixs,d_col_rot].plot.hist(ax=sp[spi[1]],bins=bins,xlim=histolim,color='blue',histtype='step')
         sp[spi[1]].set_xlabel(f'rotated {d_col}')
         #sp[spi[1]].get_legend().remove()
+    return(sp)
+
+
+def initial_dxdy_plot(phot, ixs_use, ixs_notuse, 
+                      plots_dxdy_delta_pix_ylim=7,
+                      refcat_mainfilter=None,refcat_mainfilter_err=None,refcat_maincolor=None,
+                      d2d_max=None,dmag_max=None,Nbright=None,delta_mag_lim=None):
+    
+    sp = initplot(2,3)
+    
+    dx_median = phot.t.loc[ixs_use,'dx'].median()
+    dy_median = phot.t.loc[ixs_use,'dy'].median()
+
+    print(f'dx median: {dx_median}\ndy median: {dy_median}')
+ 
+    # these are the general limits for the y-axis for the dx/dy plots
+    dy_plotlim = (dy_median-plots_dxdy_delta_pix_ylim,dy_median+plots_dxdy_delta_pix_ylim)
+    dx_plotlim = (dx_median-plots_dxdy_delta_pix_ylim,dx_median+plots_dxdy_delta_pix_ylim)
+
+
+    # plot the residuals
+    title = f'Initial cut: d2d_max={d2d_max},\ndmag_max={dmag_max}'
+    title_Nbright = f'Nbright={Nbright}'
+    title_deltamag = f'delta_mag_lim={delta_mag_lim}'
+    phot.t.loc[ixs_notuse].plot('y','dx',ax=sp[0],ylim=dx_plotlim,title=title,**plot_style['do_not_use_data'])
+    phot.t.loc[ixs_use].plot('y','dx',ax=sp[0],ylim=dx_plotlim, ylabel='dx [pixel]',**plot_style['good_data'])
+    phot.t.loc[ixs_notuse].plot('x','dy',ax=sp[1],ylim=dx_plotlim,**plot_style['do_not_use_data'])
+    phot.t.loc[ixs_use].plot('x','dy',ax=sp[1],ylim=dy_plotlim,ylabel='dy [pixel]',**plot_style['good_data'])
+    phot.t.loc[ixs_notuse].plot('x','y',ax=sp[2],**plot_style['do_not_use_data'])
+    phot.t.loc[ixs_use].plot('x','y',ax=sp[2],ylabel='y [pixel]',**plot_style['good_data'])
+    phot.t.loc[ixs_notuse].plot('sharpness','mag',ax=sp[3],**plot_style['do_not_use_data'])
+    phot.t.loc[ixs_use].plot('sharpness','mag',ax=sp[3],title=title_Nbright,ylabel='mag',**plot_style['good_data'])
+    if phot.refcat_mainfilter is not None:
+        if phot.refcat_maincolor is not None:
+            phot.t.loc[ixs_notuse].plot(phot.refcat_maincolor,'delta_mag',ax=sp[4],**plot_style['do_not_use_data'])
+            phot.t.loc[ixs_use].plot(phot.refcat_maincolor,'delta_mag',title=title_deltamag,ax=sp[4],ylabel=f'mag - {phot.refcat_mainfilter}',**plot_style['good_data'])
+            phot.t.loc[ixs_notuse].plot(phot.refcat_maincolor,phot.refcat_mainfilter,ax=sp[5],**plot_style['do_not_use_data'])
+            phot.t.loc[ixs_use].plot(phot.refcat_maincolor,phot.refcat_mainfilter,ax=sp[5],ylabel=f'{phot.refcat_mainfilter}',**plot_style['good_data'])
+            for i in range(6): sp[i].get_legend().remove()
+        else:
+            phot.t.loc[ixs_notuse].plot(phot.refcat_mainfilter,'delta_mag',title=title_deltamag,ax=sp[4],**plot_style['do_not_use_data'])
+            phot.t.loc[ixs_use].plot(phot.refcat_mainfilter,'delta_mag',ax=sp[4],ylabel=f'mag - {phot.refcat_mainfilter}',**plot_style['good_data'])
+            for i in range(5): sp[i].get_legend().remove()
+    else:
+        for i in range(4): sp[i].get_legend().remove()
+
+    plt.tight_layout()
+    plt.show()
+    
     return(sp)
 
 def dxdy_plot(phot,ixs_selected, sp=None, spi = [0,1,4,5,8,9,2,6,10,3,7,11], title=None,
@@ -411,6 +460,7 @@ def histogram_cut(phot,ixs,d_col,col,
                   sp=None
                   ):
 
+    print(f'### Doing histogram cut for {d_col}...')
     # initialize plot
     if showplots>1:
         if sp is None:
@@ -500,6 +550,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--delta_mag_lim', default=(None,None), nargs=2, type=float, help='limits on mag - refcat_mainfilter (default=%(default)s)')
         parser.add_argument('--Nbright4match', default=None, type=int, help='Use only Nbright brightest objects for matching to the ref cat (default=%(default)s)')
         parser.add_argument('--Nbright', default=None, type=int, help='Use only Nbright brightest objects in image that are matched to refcat for alignment (default=%(default)s)')
+        parser.add_argument('--histocut_order', default='dxdy', choices=['dxdy','dydx'], help='histocut_order defines whether the histogram cut is first done for dx or first for dy (default=%(default)s)')
         parser.add_argument('--xshift', default=0.0, type=float, help='added to the x coordinate before calculating ra,dec (only impacts ra,dec, not x). This can be used to correct for large shifts before matching! (default=%(default)s)')
         parser.add_argument('--yshift', default=0.0, type=float, help='added to the y coordinate before calculating ra,dec (only impacts ra,dec, not y). This can be used to correct for large shifts before matching! (default=%(default)s)')
         parser.add_argument('-p','--showplots', default=0, action='count',help='showplots=1: most important plots. showplots=2: all plots (debug/test/finetune)')
@@ -525,11 +576,13 @@ class jwst_wcs_align(apply_distortion_singleim):
         ixs = phot.getindices(ixs)
         ixs_use = copy.deepcopy(ixs)
         if d2d_max is not None:
-            ixs_use = phot.ix_inrange('d2d',None,3*d2d_max,indices=ixs_use)
+            print(f'########### !!!!!!!!!! d2d ={d2d_max} CUT!!!')
+            d2d_colname = f'{phot.refcat.short}_d2d'
+            ixs_use = phot.ix_inrange(d2d_colname,None,d2d_max,indices=ixs_use)
         if dmag_max is not None:
             ixs_use = phot.ix_inrange('dmag',None,dmag_max,indices=ixs_use)
         if (sharpness_lim[0] is not None) or (sharpness_lim[1] is not None):
-            print(f'########### !!!!!!!!!! SHARPNESS ={sharpness_lim}CUT!!!')
+            print(f'########### !!!!!!!!!! SHARPNESS ={sharpness_lim} CUT!!!')
             ixs_use = phot.ix_inrange('sharpness',sharpness_lim[0],sharpness_lim[1],indices=ixs_use)
         if (roundness1_lim[0] is not None) or (roundness1_lim[1] is not None):
             print(f'########### !!!!!!!!!! roundness1={roundness1_lim} CUT!!!')
@@ -688,7 +741,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                  savephottable=1,
                                  outbasename=None,
                                  plots_dxdy_delta_pix_ylim=7,
-                                 # histo parameters
+                                 # histogram cut parameters
+                                 histocut_order = 'dxdy', # this can only be 'dxdy' or 'dydx'
                                  binsize_px = 0.2, # this is the binsize of the dx/dy histograms
                                  bin_weights_flag=True,# If bin_weights_flag is set to True, 
                                                        #then the dx/dy bins are weighted by 
@@ -716,6 +770,8 @@ class jwst_wcs_align(apply_distortion_singleim):
         # Calculate the difference between JWST mag and main filter of reference catalog
         if phot.refcat_mainfilter is not None:
             phot.t['delta_mag'] = phot.t['mag'] - phot.t[phot.refcat_mainfilter]
+        else:
+            phot.t['delta_mag'] = np.nan
         
         # do some first very rough cuts.
         # sets phot.ixs_use and phot.ixs_notuse
@@ -729,47 +785,15 @@ class jwst_wcs_align(apply_distortion_singleim):
                                Nbright=Nbright,
                                ixs=ixs)
         
-        dx_median = phot.t.loc[ixs,'dx'].median()
-        dy_median = phot.t.loc[ixs,'dy'].median()
-
-        if self.verbose>1: print(f'Nx:{Nx} Ny:{Ny}\ndx median: {dx_median}\ndy median: {dy_median}')
- 
-        # these are the general limits for the y-axis for the dx/dy plots
-        dy_plotlim = (dy_median-plots_dxdy_delta_pix_ylim,dy_median+plots_dxdy_delta_pix_ylim)
-        dx_plotlim = (dx_median-plots_dxdy_delta_pix_ylim,dx_median+plots_dxdy_delta_pix_ylim)
-
+        # do the initial dx,dy plot and other important plots
+        # it shows the initial cut.
         if showplots>1:
-            sp = initplot(2,3)
-            # plot the residuals
-            title = f'Initial cut: d2d_max={d2d_max},\ndmag_max={dmag_max}'
-            title_Nbright = f'Nbright={Nbright}'
-            title_deltamag = f'delta_mag_lim={delta_mag_lim}'
-            phot.t.loc[phot.ixs_notuse].plot('y','dx',ax=sp[0],ylim=dx_plotlim,title=title,**plot_style['do_not_use_data'])
-            phot.t.loc[phot.ixs_use].plot('y','dx',ax=sp[0],ylim=dx_plotlim, ylabel='dx [pixel]',**plot_style['good_data'])
-            phot.t.loc[phot.ixs_notuse].plot('x','dy',ax=sp[1],ylim=dx_plotlim,**plot_style['do_not_use_data'])
-            phot.t.loc[phot.ixs_use].plot('x','dy',ax=sp[1],ylim=dy_plotlim,ylabel='dy [pixel]',**plot_style['good_data'])
-            phot.t.loc[phot.ixs_notuse].plot('x','y',ax=sp[2],**plot_style['do_not_use_data'])
-            phot.t.loc[phot.ixs_use].plot('x','y',ax=sp[2],ylabel='y [pixel]',**plot_style['good_data'])
-            phot.t.loc[phot.ixs_notuse].plot('sharpness','mag',ax=sp[3],**plot_style['do_not_use_data'])
-            phot.t.loc[phot.ixs_use].plot('sharpness','mag',ax=sp[3],title=title_Nbright,ylabel='mag',**plot_style['good_data'])
-            if phot.refcat_mainfilter is not None:
-                if phot.refcat_maincolor is not None:
-                    phot.t.loc[phot.ixs_notuse].plot(phot.refcat_maincolor,'delta_mag',ax=sp[4],**plot_style['do_not_use_data'])
-                    phot.t.loc[phot.ixs_use].plot(phot.refcat_maincolor,'delta_mag',title=title_deltamag,ax=sp[4],ylabel=f'mag - {phot.refcat_mainfilter}',**plot_style['good_data'])
-                    phot.t.loc[phot.ixs_notuse].plot(phot.refcat_maincolor,phot.refcat_mainfilter,ax=sp[5],**plot_style['do_not_use_data'])
-                    phot.t.loc[phot.ixs_use].plot(phot.refcat_maincolor,phot.refcat_mainfilter,ax=sp[5],ylabel=f'{phot.refcat_mainfilter}',**plot_style['good_data'])
-                    for i in range(6): sp[i].get_legend().remove()
-                else:
-                    phot.t.loc[phot.ixs_notuse].plot(phot.refcat_mainfilter,'delta_mag',title=title_deltamag,ax=sp[4],**plot_style['do_not_use_data'])
-                    phot.t.loc[phot.ixs_use].plot(phot.refcat_mainfilter,'delta_mag',ax=sp[4],ylabel=f'mag - {wcs_align.phot.refcat_mainfilter}',**plot_style['good_data'])
-                    for i in range(5): sp[i].get_legend().remove()
-            else:
-                for i in range(4): sp[i].get_legend().remove()
+            initial_dxdy_plot(phot, phot.ixs_use, phot.ixs_notuse,
+                              plots_dxdy_delta_pix_ylim=plots_dxdy_delta_pix_ylim,
+                              refcat_mainfilter=phot.refcat_mainfilter,refcat_mainfilter_err=phot.refcat_mainfilter_err,refcat_maincolor=phot.refcat_maincolor,
+                              d2d_max=d2d_max,dmag_max=dmag_max,Nbright=Nbright,delta_mag_lim=delta_mag_lim)
 
-            plt.tight_layout()
-            plt.show()
-            #if showplots: plt.show() 
-            # add saveplots
+        
 
         # Here we correct for rotation so that we can robustly remove outlier matches
         
@@ -788,94 +812,43 @@ class jwst_wcs_align(apply_distortion_singleim):
         # of +-10 pixels of 2048 pixels are probed, i.e. dx does not change
         # by more than 10 pixels over the full detector width
         #  slope_stepsize=(slope_max-slope_min)/slope_Nsteps
-
+ 
         slope_max=-slope_min
         slope_stepsize=(slope_max-slope_min)/slope_Nsteps
+       
+        # histocut_order defines whether the histogram cut is first done for dx or first for dy
+        if histocut_order == 'dxdy':
+            d_col1,col1,Naxis1_px = 'dx','y',Ny
+            d_col2,col2,Naxis2_px = 'dy','x',Nx
+        elif histocut_order == 'dydx':
+            d_col1,col1,Naxis1_px = 'dy','x',Nx
+            d_col2,col2,Naxis2_px = 'dx','y',Ny
 
-        ####BEST:
-        #    slope  intercept  maxval  index  d_bestguess  fwhm  multimax
-        #-0.000293        0.3     132   1919      1.91045   0.3     False
-        #slope_min = -0.0005
-        #slope_max = slope_min + 10*slope_stepsize
-        
-        # initialize dx plot
-        if showplots>1:
-            sp=initplot(2,3)
-        else:
-            sp=None
-        (dx_rot_results,dx_best_index) = rotate_d_and_find_binmax(phot,ixs,'dx','y',
-                                                                  Ny,
-                                                                  binsize=binsize_px,
-                                                                  bin_weights_flag=bin_weights_flag,
-                                                                  slope_min=slope_min,
-                                                                  slope_max=slope_max,
-                                                                  slope_stepsize=slope_stepsize,
-                                                                  showplots=showplots,
-                                                                  sp=sp,
-                                                                  spi=[0,1,2])
 
-             
-        # Using the best dx_rotated, we first remove all entries with dx_rotated outside of dx_bestguess+-Nfwhm*fwhm
-        # Note that FWHM ~ 2.355 stdev, so Nfwhm*fwhm should be at least 3*stdev. This is the first ROUGH cut, with 
-        # which we just want to remove excessive amounts of outliers. Then a 3-sigma cut is done on the *rotated* dx
-        (ixs_dx_cut,ixs_dx_roughcut) = sigmacut_d_rot(phot,ixs,'dx','y',
-                                                      dx_rot_results.t.loc[dx_best_index,'slope'],
-                                                      dx_rot_results.t.loc[dx_best_index,'intercept'],
-                                                      dx_rot_results.t.loc[dx_best_index,'d_bestguess'],
-                                                      rough_cut_px = Nfwhm*dx_rot_results.t.loc[dx_best_index,'fwhm'],
-                                                      binsize=binsize_px,
-                                                      bin_weights_flag=bin_weights_flag,
-                                                      showplots=showplots,
-                                                      sp=sp,
-                                                      spi=[3,4,5]
-                                                      )
-        plt.tight_layout()        
-        if showplots>1:
-            print('Stopping to show dx plots')        
-            plt.show()
- 
+        # Do the histogram cut on the first dcol (dx or dy, as selected)
+        (ixs_cut1,rot_results1) = histogram_cut(phot,ixs,d_col1,col1,Naxis1_px,
+                                                binsize=binsize_px,
+                                                bin_weights_flag=bin_weights_flag,
+                                                slope_min=slope_min,
+                                                slope_max=slope_max,
+                                                slope_stepsize=slope_stepsize,
+                                                Nfwhm=Nfwhm,
+                                                showplots=showplots)
 
-        # Using the indices after the dx cut, we now also do a dy cut
-        # slope in dy is the -slope of dx.
-        slope = -dx_rot_results.t.loc[dx_best_index,'slope']
-        # We only need to do it +-10*stepsize
-        slope_min = slope-10*slope_stepsize
-        slope_max = slope+10*slope_stepsize
+        # Do the histogram cut on the second dcol (dx or dy, as selected)
+        (ixs_cut2,rot_results2) = histogram_cut(phot,ixs_cut1,d_col2,col2,Naxis2_px,
+                                                binsize=binsize_px,
+                                                bin_weights_flag=bin_weights_flag,
+                                                slope_min=slope_min,
+                                                slope_max=slope_max,
+                                                slope_stepsize=slope_stepsize,
+                                                Nfwhm=Nfwhm,
+                                                showplots=showplots)
 
-        # initialize dy plot
-        if showplots>1:
-            sp=initplot(2,3)
-        else:
-            sp=None
-        (dy_rot_results,dy_best_index) = rotate_d_and_find_binmax(phot,ixs_dx_cut,'dy','x',
-                                                                  Nx,
-                                                                  binsize=binsize_px,
-                                                                  bin_weights_flag=bin_weights_flag,
-                                                                  slope_min=slope_min,
-                                                                  slope_max=slope_max,
-                                                                  slope_stepsize=slope_stepsize,
-                                                                  showplots=showplots,
-                                                                  sp=sp,
-                                                                  spi=[0,1,2])
-        (ixs_dy_cut,ixs_dy_roughcut) = sigmacut_d_rot(phot,ixs_dx_cut,'dy','x',
-                                                      dy_rot_results.t.loc[dy_best_index,'slope'],
-                                                      dy_rot_results.t.loc[dy_best_index,'intercept'],
-                                                      dy_rot_results.t.loc[dy_best_index,'d_bestguess'],
-                                                      rough_cut_px = Nfwhm*dy_rot_results.t.loc[dy_best_index,'fwhm'],
-                                                      binsize=binsize_px,
-                                                      bin_weights_flag=bin_weights_flag,
-                                                      showplots=showplots,
-                                                      sp=sp,
-                                                      spi=[3,4,5]
-                                                      )
-        plt.tight_layout()        
-        if showplots>1:
-            print('Stopping to show dy plots')        
-            plt.show()
 
         if savephottable:
             print(f'Saving {outbasename}.good.phot.txt')
-            phot.write(f'{outbasename}.good.phot.txt',indices=ixs_dy_cut)
+            phot.write(f'{outbasename}.good.phot.txt',indices=ixs_cut2)
             if savephottable>1:
                 print(f'Saving {outbasename}.all.phot.txt')
                 phot.write(f'{outbasename}.all.phot.txt')
@@ -885,7 +858,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         #    infoplots(phot,ixs_dy_cut,dy_plotlim=dy_plotlim,dx_plotlim=dx_plotlim)
             
 
-        return(ixs_dy_cut)
+        return(ixs_cut2)
                 
     def update_phottable_final_wcs(self,tweakregfilename,
                                    ixs_bestmatch,
@@ -1008,6 +981,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                 delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
                 Nbright4match=None, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                 Nbright=None,    # Use only the brightest Nbright sources from image after all other cuts
+                histocut_order='dxdy', # histocut_order defines whether the histogram cut is first done for dx or first for dy
                 xshift=0.0,# added to the x coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
                 yshift=0.0, # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
                 showplots=0,
@@ -1016,6 +990,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                 ee_radius=70
                 ):
             
+        
         # apply distortion coefficients if wanted.
         if distortion_file is not None:
             # apply distortion terms
@@ -1025,7 +1000,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                             skip_if_exists = (skip_applydistortions_if_exists |  skip_if_exists))
         else:
             calimname = input_image
-               
+            
         # do the photometry
         self.phot.verbose = self.verbose
         self.phot.run_phot(calimname,
@@ -1035,6 +1010,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                               refcat_deccol=refcat_deccol,
                               pmflag=pmflag,
                               pm_median=pm_median,
+                              outrootdir=self.outdir,
                               photfilename=photfilename,
                               load_photcat_if_exists=load_photcat_if_exists,
                               rematch_refcat=rematch_refcat,
@@ -1047,6 +1023,9 @@ class jwst_wcs_align(apply_distortion_singleim):
 
         matching_outbasename = re.sub('\.fits$','',calimname)
         if (matching_outbasename == calimname): raise RuntimeError(f'Could not remove .fits from {calimname}')        
+        # make sure the output files are in the self.outdir if set...
+        if self.outdir is not None:
+            matching_outbasename = f'{self.outdir}/{os.path.basename(matching_outbasename)}'
 
         ixs_bestmatch= self.find_good_refcat_matches(d2d_max = d2d_max,
                                                  dmag_max = dmag_max,
@@ -1054,6 +1033,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                  roundness1_lim = roundness1_lim, # roundness1 limits 
                                                  delta_mag_lim = delta_mag_lim, # limits on mag-refcat_mainfilter
                                                  Nbright = Nbright,
+                                                 histocut_order=histocut_order,
                                                  showplots=showplots,
                                                  saveplots=saveplots,
                                                  savephottable=savephottable,
@@ -1113,6 +1093,7 @@ if __name__ == '__main__':
                      delta_mag_lim =  args.delta_mag_lim, # limits on mag-refcat_mainfilter
                      Nbright4match=args.Nbright4match, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                      Nbright=args.Nbright,    # U/se only the brightest Nbright sources from image
+                     histocut_order=args.histocut_order, # histocut_order defines whether the histogram cut is first done for dx or first for dy
                      xshift=args.xshift,# added to the x coordinate before calculating ra,dec (only impacts ra,dec, not x). This can be used to correct for large shifts before matching!
                      yshift=args.yshift, # added to the y coordinate before calculating ra,dec (only impacts ra,dec, not y). This can be used to correct for large shifts before matching!
                      showplots=args.showplots,

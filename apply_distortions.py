@@ -70,9 +70,10 @@ class apply_distortions(pdastroclass):
         if self.verbose: print(f'Found {len(filenames)} files matching filepatterns {filepatterns}')
         return(filenames)
     
-    def get_input_files(self,filepatterns,directory=None):
+    def get_input_files(self,filepatterns,directory=None,filters=None,pupils=None):
         self.t['filename'] = self.get_files(filepatterns,directory=directory)
-        for ix in self.getindices():
+        ixs = self.getindices()
+        for ix in ixs:
             hdr = fits.getheader(self.t.loc[ix,'filename'])
             detector = re.sub('long$','5',hdr['DETECTOR'].lower())
             self.t.loc[ix,self.aperture_col]=f'{detector}_{hdr["SUBARRAY"].lower()}'
@@ -84,9 +85,32 @@ class apply_distortions(pdastroclass):
                 self.t.loc[ix,self.pupil_col]='clear'
             else:   
                 self.t.loc[ix,self.filter_col]=f'{hdr["FILTER"].lower()}'
-                self.t.loc[ix,self.pupil_col]=f'{hdr["PUPIL"].lower()}'
+                if "PUPIL" in hdr:
+                    self.t.loc[ix,self.pupil_col]=f'{hdr["PUPIL"].lower()}'
+                else:
+                    self.t.loc[ix,self.pupil_col]=None
+        
         if self.verbose:
-            print('##################\n### Input files:')
+            print(f'##################\n### Found {len(ixs)} input files with the correct filepatterns {filepatterns}')
+            
+        # if specified, select on filters
+        if filters is not None:
+            ixs_filters = []
+            for filt in filters:
+                ixs_filters.extend(self.ix_equal(self.filter_col,filt.lower()))
+            print(f'### after filters cut ({filters}): {len(ixs_filters)} input files left')
+            self.t = self.t.loc[ixs_filters]
+            
+        # if specified, select on pupils
+        if pupils is not None:
+            ixs_pupils = []
+            for pupil in pupils:
+                ixs_pupils.extend(self.ix_equal(self.filter_col,pupil.lower()))
+            print(f'### after pupils cut ({pupils}): {len(ixs_pupils)} input files left')
+            self.t = self.t.loc[ixs_pupils]
+            
+        if self.verbose>2:
+            print('### Input files:')
             self.write()
         
     def get_distortion_files(self,filepatterns,directory=None):
@@ -270,7 +294,6 @@ class apply_distortions(pdastroclass):
                 raise RuntimeError(f'cannot determine suffix for file {self.t.loc[ix,"filename"]} with pattern {pattern}!')
             (inputbasename,inputsuffix)=m.groups()
             inputbasename = os.path.basename(inputbasename)
-            print(inputbasename,inputsuffix)
             if not (inputsuffix in suffixmapping):
                 raise RuntimeError(f'suffix {inputsuffix} is not in mapping {suffixmapping}')
             
@@ -354,7 +377,6 @@ if __name__ == '__main__':
         sys.exit(0)
 
     ixs_exists,ixs_notexists = applydist.get_output_filenames(ixs=ixs_matches)
-    print('vvv',ixs_exists,ixs_notexists)
     
     ixs_todo = ixs_notexists[:]
     if len(ixs_exists)>0:

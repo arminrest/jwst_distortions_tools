@@ -1355,6 +1355,10 @@ class jwst_photclass(pdastrostatsclass):
 
         # get the photfilename. photfilename='auto' removes fits from image name and replaces it with phot.txt
         self.photfilename = self.get_photfilename(photfilename,outrootdir=outrootdir,outsubdir=outsubdir,imagename=imagename)
+                       
+        print(f'SSSSSSSSSSSSSSSSSS {self.photfilename} xxx {self.outdir}')
+        sys.exit(0)
+
         
         # Load photcat if wanted
         photcat_loaded = False
