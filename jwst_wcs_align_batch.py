@@ -24,7 +24,7 @@ class align_wcs_batch(apply_distortions):
         parser = self.wcs_align.default_options(parser)
         #parser.add_argument('-d','--debug', default=False, action='store_true', help='debug mode: throw exceptions instead of try except block')
         parser.add_argument('--distortion_files', nargs='+', default=None, help='list of the distortion file(pattern)s to be applied. (default=%(default)s)')
-        parser.add_argument('--debug', default=False, action='store_true',help='debug mode: alignment is done outside "try" block!')
+        parser.add_argument('-d','--debug', default=False, action='store_true',help='debug mode: alignment is done outside "try" block!')
 
         return(parser)
 
@@ -56,6 +56,9 @@ class align_wcs_batch(apply_distortions):
                   sharpness_lim = (None, None), # sharpness limits
                   roundness1_lim = (None, None), # roundness1 limits 
                   delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
+                  objmag_lim = (None,None), # limits on mag, the magnitude of the objects in the image
+                  refmag_lim = (None,None), # limits on refcat_mainfilter, the magnitude of the reference catalog                    
+                  slope_min=-10/2048.0, 
                   Nbright4match=None, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                   Nbright=None,    # Use only the brightest Nbright sources from image
                   histocut_order='dxdy', # histocut_order defines whether the histogram cut is first done for dx or first for dy
@@ -100,6 +103,9 @@ class align_wcs_batch(apply_distortions):
                                        sharpness_lim = sharpness_lim, # sharpness limits
                                        roundness1_lim = roundness1_lim, # roundness1 limits 
                                        delta_mag_lim =  delta_mag_lim, # limits on mag-refcat_mainfilter
+                                       objmag_lim = objmag_lim, # limits on mag, the magnitude of the objects in the image
+                                       refmag_lim = refmag_lim, # limits on refcat_mainfilter, the magnitude of the reference catalog
+                                       slope_min = slope_min,
                                        Nbright4match=Nbright4match, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                                        Nbright=Nbright,    # U/se only the brightest Nbright sources from image
                                        histocut_order=histocut_order, # histocut_order defines whether the histogram cut is first done for dx or first for dy
@@ -129,6 +135,9 @@ class align_wcs_batch(apply_distortions):
                                            sharpness_lim = sharpness_lim, # sharpness limits
                                            roundness1_lim = roundness1_lim, # roundness1 limits 
                                            delta_mag_lim =  delta_mag_lim, # limits on mag-refcat_mainfilter
+                                           objmag_lim = objmag_lim, # limits on mag, the magnitude of the objects in the image
+                                           refmag_lim = refmag_lim, # limits on refcat_mainfilter, the magnitude of the reference catalog
+                                           slope_min = slope_min,
                                            Nbright4match=Nbright4match, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                                            Nbright=Nbright,    # U/se only the brightest Nbright sources from image
                                            histocut_order=histocut_order, # histocut_order defines whether the histogram cut is first done for dx or first for dy
@@ -220,6 +229,9 @@ if __name__ == '__main__':
                         sharpness_lim = args.sharpness_lim, # sharpness limits
                         roundness1_lim = args.roundness1_lim, # roundness1 limits 
                         delta_mag_lim =  args.delta_mag_lim, # limits on mag-refcat_mainfilter
+                        objmag_lim = args.objmag_lim, # limits on mag, the magnitude of the objects in the image
+                        refmag_lim = args.refmag_lim, # limits on refcat_mainfilter, the magnitude of the reference catalog
+                        slope_min = args.slope_min,
                         Nbright4match=args.Nbright4match, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                         Nbright=args.Nbright,    # U/se only the brightest Nbright sources from image
                         histocut_order=args.histocut_order, # histocut_order defines whether the histogram cut is first done for dx or first for dy

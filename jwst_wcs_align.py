@@ -460,7 +460,7 @@ def histogram_cut(phot,ixs,d_col,col,
                   sp=None
                   ):
 
-    print(f'### Doing histogram cut for {d_col}...')
+    print(f'### Doing histogram cut for {d_col}, slope_min:{slope_min:.6f} slope_max:{slope_max:.6f} slope_stepsize:{slope_stepsize:.6f}')
     # initialize plot
     if showplots>1:
         if sp is None:
@@ -548,6 +548,9 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--sharpness_lim', default=(0.4,1.0), nargs=2, type=float, help='sharpness limits of sources in image (default=%(default)s)')
         parser.add_argument('--roundness1_lim', default=(-0.75,0.75), nargs=2, type=float, help='roundness1 limits of sources in image (default=%(default)s)')
         parser.add_argument('--delta_mag_lim', default=(None,None), nargs=2, type=float, help='limits on mag - refcat_mainfilter (default=%(default)s)')
+        parser.add_argument('--objmag_lim', default=(None,None), nargs=2, type=float, help='limits on mag, the magnitude of the objects in the image (default=%(default)s)')
+        parser.add_argument('--refmag_lim', default=(None,None), nargs=2, type=float, help='limits on refcat_mainfilter, the magnitude of the reference catalog (default=%(default)s)')
+        parser.add_argument('--slope_min', default=-0.005, type=float, help='minimum slope for linear correction applied to dx/dy. This effectively accounts for rotation. slopes go from slopemin to -slopemin (default=%(default)s)')
         parser.add_argument('--Nbright4match', default=None, type=int, help='Use only Nbright brightest objects for matching to the ref cat (default=%(default)s)')
         parser.add_argument('--Nbright', default=None, type=int, help='Use only Nbright brightest objects in image that are matched to refcat for alignment (default=%(default)s)')
         parser.add_argument('--histocut_order', default='dxdy', choices=['dxdy','dydx'], help='histocut_order defines whether the histogram cut is first done for dx or first for dy (default=%(default)s)')
@@ -569,6 +572,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                     sharpness_lim = (None, None), # sharpness limits
                     roundness1_lim = (None, None), # roundness1 limits 
                     delta_mag_lim = (None,None), # limits on mag - refcat_mainfilter!
+                    objmag_lim = (None,None), # limits on mag, the magnitude of the objects in the image
+                    refmag_lim = (None,None), # limits on refcat_mainfilter, the magnitude of the reference catalog                    
                     Nbright=None, ixs=None):
         if phot is None:
             phot=self.phot
@@ -587,11 +592,19 @@ class jwst_wcs_align(apply_distortion_singleim):
         if (roundness1_lim[0] is not None) or (roundness1_lim[1] is not None):
             print(f'########### !!!!!!!!!! roundness1={roundness1_lim} CUT!!!')
             ixs_use = phot.ix_inrange('roundness1',roundness1_lim[0],roundness1_lim[1],indices=ixs_use)
+        if (objmag_lim[0] is not None) or (objmag_lim[1] is not None):
+            print(f'########### !!!!!!!!!! objmag_lim={objmag_lim} CUT!!!')
+            ixs_use = phot.ix_inrange('mag',objmag_lim[0],objmag_lim[1],indices=ixs_use)
         if (delta_mag_lim[0] is not None) or (delta_mag_lim[1] is not None):
             print(f'########### !!!!!!!!!! delta_mag_lim={delta_mag_lim} CUT!!!')
             if phot.refcat_mainfilter is None:
                 raise RuntimeError('Cannot do delta_mag cut since the refcat_mainfilter is not defined!')
             ixs_use = phot.ix_inrange('delta_mag',delta_mag_lim[0],delta_mag_lim[1],indices=ixs_use)
+        if (refmag_lim[0] is not None) or (refmag_lim[1] is not None):
+            print(f'########### !!!!!!!!!! refmag_lim={refmag_lim} CUT!!!')
+            if phot.refcat_mainfilter is None:
+                raise RuntimeError('Cannot do refmag_lim cut since the refcat_mainfilter is not defined!')
+            ixs_use = phot.ix_inrange(phot.refcat_mainfilter,refmag_lim[0],refmag_lim[1],indices=ixs_use)
         if Nbright is not None:
             ixs_sort = phot.ix_sort_by_cols(['mag'],indices=ixs_use)
             ixs_use = ixs_sort[:Nbright]
@@ -669,7 +682,7 @@ class jwst_wcs_align(apply_distortion_singleim):
             tweakreg.snr_threshold = 50
             tweakreg.separation = 9
             tweakreg.searchrad = 0.5
-            tweakreg.minobj = 10
+            tweakreg.minobj = 7
             tweakreg.min_gaia = 30
             tweakreg.xoffset = 0
             tweakreg.yoffset = 0
@@ -734,6 +747,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                  sharpness_lim = (None, None), # sharpness limits
                                  roundness1_lim = (None, None), # roundness1 limits 
                                  delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
+                                 objmag_lim = (None,None), # limits on mag, the magnitude of the objects in the image
+                                 refmag_lim = (None,None), # limits on refcat_mainfilter, the magnitude of the reference catalog                    
                                  Nbright=None,
                                  ixs=None,
                                  showplots=1,
@@ -747,7 +762,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                  bin_weights_flag=True,# If bin_weights_flag is set to True, 
                                                        #then the dx/dy bins are weighted by 
                                                        # the flux of the detection.
-                                 slope_min=-10.0/2048.0, 
+                                 slope_min=-10/2048.0, 
                                  slope_Nsteps = 200, # slope_max=-slope_min, slope_stepsize=(slope_max-slope_min)/slope_Nsteps
                                  Nfwhm = 2.5 
                                  ):
@@ -782,6 +797,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                sharpness_lim = sharpness_lim, # sharpness limits
                                roundness1_lim = roundness1_lim, # roundness1 limits 
                                delta_mag_lim = delta_mag_lim, # limits on mag-refcat_mainfilter
+                               objmag_lim = objmag_lim, # limits on mag, the magnitude of the objects in the image
+                               refmag_lim = refmag_lim, # limits on refcat_mainfilter, the magnitude of the reference catalog
                                Nbright=Nbright,
                                ixs=ixs)
         
@@ -979,9 +996,14 @@ class jwst_wcs_align(apply_distortion_singleim):
                 sharpness_lim = (None, None), # sharpness limits
                 roundness1_lim = (None, None), # roundness1 limits 
                 delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
+                objmag_lim = (None,None), # limits on mag, the magnitude of the objects in the image
+                refmag_lim = (None,None), # limits on refcat_mainfilter, the magnitude of the reference catalog                    
                 Nbright4match=None, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                 Nbright=None,    # Use only the brightest Nbright sources from image after all other cuts
                 histocut_order='dxdy', # histocut_order defines whether the histogram cut is first done for dx or first for dy
+                slope_min=-10/2048.0, 
+                slope_Nsteps = 200, # slope_max=-slope_min, slope_stepsize=(slope_max-slope_min)/slope_Nsteps
+                Nfwhm = 2.5,
                 xshift=0.0,# added to the x coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
                 yshift=0.0, # added to the y coordinate before calculating ra,dec. This can be used to correct for large shifts before matching!
                 showplots=0,
@@ -1032,8 +1054,13 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                  sharpness_lim = sharpness_lim, # sharpness limits
                                                  roundness1_lim = roundness1_lim, # roundness1 limits 
                                                  delta_mag_lim = delta_mag_lim, # limits on mag-refcat_mainfilter
+                                                 objmag_lim = objmag_lim, # limits on mag, the magnitude of the objects in the image
+                                                 refmag_lim = refmag_lim, # limits on refcat_mainfilter, the magnitude of the reference catalog
                                                  Nbright = Nbright,
                                                  histocut_order=histocut_order,
+                                                 slope_min=slope_min, 
+                                                 slope_Nsteps = slope_Nsteps, # slope_max=-slope_min, slope_stepsize=(slope_max-slope_min)/slope_Nsteps
+                                                 Nfwhm = Nfwhm,
                                                  showplots=showplots,
                                                  saveplots=saveplots,
                                                  savephottable=savephottable,
@@ -1091,6 +1118,9 @@ if __name__ == '__main__':
                      sharpness_lim = args.sharpness_lim, # sharpness limits
                      roundness1_lim = args.roundness1_lim, # roundness1 limits 
                      delta_mag_lim =  args.delta_mag_lim, # limits on mag-refcat_mainfilter
+                     objmag_lim = args.objmag_lim, # limits on mag, the magnitude of the objects in the image
+                     refmag_lim = args.refmag_lim, # limits on refcat_mainfilter, the magnitude of the reference catalog
+                     slope_min = args.slope_min,
                      Nbright4match=args.Nbright4match, # Use only the the brightest  Nbright sources from image for the matching with the ref catalog
                      Nbright=args.Nbright,    # U/se only the brightest Nbright sources from image
                      histocut_order=args.histocut_order, # histocut_order defines whether the histogram cut is first done for dx or first for dy
