@@ -8,7 +8,7 @@ Created on Thu Apr 21 14:32:42 2022
 
 import os,re,sys,copy
 from pdastro import makepath,rmfile,pdastroclass,AnotB
-from simple_jwst_phot_pipe import jwst_photclass
+from simple_jwst_phot_pipe import jwst_photclass,hst_photclass
 #from jwst.tweakreg import TweakRegStep
 import tweakreg_hack
 import argparse
@@ -564,6 +564,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--sip_degree', default=3, type=int,help='degree for SIP transformation.')
         parser.add_argument('--sip_points', default=128, type=int,help='npoints for SIP transformation.')
         parser.add_argument('--ee_radius', default=70, type=int, help='encircled energy percentage (multiples of 10) for photometry')
+        parser.add_argument('--is_hst', default=False, action='store_true', help='set if your image is from hst not jwst')
         return(parser)
 
     # make some rough cuts on dmag, d2d, and Nbright
@@ -1083,7 +1084,12 @@ class jwst_wcs_align(apply_distortion_singleim):
 
         return(0)
 
-
+class hst_wcs_align(jwst_wcs_align):
+    def __init__(self,instrument,image_filter,psf_fwhm,aperture_radius,
+        aperture_name,detector=None,pupil=None,subarray=None):
+        jwst_wcs_align.__init__(self)
+        self.phot=hst_photclass(instrument,image_filter,psf_fwhm,aperture_radius,
+        detector=detector,pupil=pupil,subarray=subarray,aperture_name=aperture_name)
         
 if __name__ == '__main__':
     wcs_align = jwst_wcs_align()
@@ -1095,6 +1101,7 @@ if __name__ == '__main__':
     wcs_align.sip_err = args.sip_err
     wcs_align.sip_degree = args.sip_degree
     wcs_align.sip_points = args.sip_points
+
     #wcs_align.calphot=jwst_photclass()
     
     wcs_align.set_outdir(args.outrootdir, args.outsubdir)
