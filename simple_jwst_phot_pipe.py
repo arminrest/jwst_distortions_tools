@@ -36,6 +36,7 @@ from jwst.source_catalog import reference_data
 import astropy.units as u
 import pysiaf
 from astroquery.gaia import Gaia
+from astroquery.mast import Catalogs
 from astropy.time import Time
 import pandas as pd
 
@@ -145,6 +146,16 @@ def get_hawki_cat(ra0,dec0,radius_deg,radius_factor=1.1,
 
         
     return(df,'ra','dec')
+
+def get_astroquery_cat(ra0,dec0,radius_deg,radius_factor=1.1,
+                     catalog_name = 'Panstarrs',
+                     calc_mag_errors=True,
+                     rename_mag_colnames=True, # renames from f'phot_{filt}_mean_mag' to f'{filt}'
+                     remove_null=True):
+    print('GETTING %s CATALOG'%catalog_name)
+    radec = '%s %s'%(str(ra0),str(dec0)) if ':' in str(ra0) else '%f %f'%(ra0,dec0)
+    catalog_data = Catalogs.query_object(radec, catalog=catalog_name,radius=radius_deg)
+    return catalog_data
 
 
 def get_hst_cat(ra0,dec0,radius_deg,radius_factor=1.1,
@@ -931,7 +942,8 @@ class jwst_photclass(pdastrostatsclass):
     
 
     def init_refcat(self,refcatname,mjd=None,
-                    refcat_racol=None,refcat_deccol=None):
+                    refcat_racol=None,refcat_deccol=None,refcat_magcol=None,
+                    refcat_magerrcol=None,refcat_color=None):
         self.refcat = pdastroclass()
 
         self.refcat.name = refcatname
@@ -986,23 +998,25 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.mainfilter_err = None
             self.refcat.maincolor = 'J2_K2'
         else:
-            if os.path.isfile(refcatname):
-                # give default column names
-                self.refcat.racol = 'ra'
-                self.refcat.deccol = 'dec'
-                self.refcat.name = os.path.basename(refcatname)
-                self.refcat.short = 'reffile'
-                self.refcat.cols2copy = []
-                self.refcat.mainfilter = 'f814w'
-                self.refcat.mainfilter_err = None
-                self.refcat.maincolor = None
-            else:
-                raise RuntimeError(f'Don\'t know waht to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
+            self.refcat.racol = refcat_racol
+            self.refcat.deccol = refcat_deccol
+            self.refcat.name = refcatname
+            self.refcat.short = refcatname if not os.path.isfile(refcatname) else 'reffile'
+            self.refcat.cols2copy = []#['ID','ra_error_mas','dec_error_mas','J2mag','K2mag','J2_K2']
+            self.refcat.mainfilter = refcat_magcol
+            self.refcat.mainfilter_err = refcat_magerrcol
+            self.refcat.maincolor = refcat_color
                 
         if refcat_racol is not None:
             self.refcat.racol = refcat_racol
         if refcat_deccol is not None:
             self.refcat.deccol = refcat_deccol
+        if refcat_magcol is not None:
+            self.refcat.mainfilter = refcat_magcol
+        if refcat_magerrcol is not None:
+            self.refcat.mainfilter = refcat_magerrcol
+        if refcat_color is not None:
+            self.refcat.maincolor = refcat_color
                 
         return(0)
 
@@ -1010,12 +1024,15 @@ class jwst_photclass(pdastrostatsclass):
                     ra0=None,dec0=None,radius_deg=None,
                     mjd=None,
                     pm_median=False,
-                    refcat_racol=None,refcat_deccol=None,pmflag=True):
+                    refcat_racol=None,refcat_deccol=None,refcat_magcol=None,
+                    refcat_magerrcol=None,refcat_color=None,pmflag=True):
 
         # initialize the refcat, and set racol,deccol and other
         # parameters depending on the choice of refcat
         self.init_refcat(refcatname,mjd=mjd,
-                         refcat_racol=refcat_racol,refcat_deccol=refcat_deccol)
+                         refcat_racol=refcat_racol,refcat_deccol=refcat_deccol,refcat_magcol=refcat_magcol,
+                         refcat_magerrcol=refcat_magerrcol,refcat_color=refcat_color)
+
         print('RA/Dec columns in reference catalog: ',self.refcat.racol,self.refcat.deccol)
         
         if refcatname.lower()=='gaia':
@@ -1033,22 +1050,42 @@ class jwst_photclass(pdastrostatsclass):
         else:
             if os.path.isfile(refcatname):
                 print(f'LOADING refcat {refcatname}')
-                self.refcat.t = get_refcat_file(refcatname,racol=self.refcat.racol,deccol=self.refcat.deccol)
-                self.refcat.t['ID']=self.refcat.getindices()
+                self.refcat.t = Table.from_pandas(get_refcat_file(refcatname,racol=self.refcat.racol,deccol=self.refcat.deccol))
+                if ('ra' not in self.refcat.t.columns and self.refcat.racol is None) or\
+                 ('dec' not in self.refcat.t.columns and self.refcat.deccol is None):
+                    raise RuntimeError('When supplying a catalog, either use ra/dec colnames or set refcat_racol and refcat_deccol.')
+                if self.refcat.mainfilter is None or self.refcat.mainfilter_err is None or self.refcat.maincolor is None:
+                    raise RuntimeError("When using a custom catalog, must supply refcat_magcol, refcat_magcolerr,"+\
+                        " and refcat_color as coloumname1_columnname_2")
             else:
-                raise RuntimeError(f'Don\'t know waht to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
+                try:
+                    self.refcat.t = get_astroquery_cat(ra0,dec0,radius_deg,catalog_name=refcatname)
+                except:
+                    raise RuntimeError(f'Don\'t know what to do with reference catalog {refcatname}! Not a known refcat, and not a file!')
+
+                if self.refcat.racol is None or self.refcat.deccol is None or self.refcat.mainfilter is None or\
+                                    self.refcat.mainfilter_err is None or self.refcat.maincolor is None:
+                    raise RuntimeError("When using an astroquery catalog, must supply refcat_racol,"+\
+                        " refcat_deccol, refcat_magcol, refcat_magcolerr, and  refcat_color as coloumname1_columnname_2 ("+\
+                            "Column names are: "+','.join(self.refcat.t.colnames)+')')
+
+            self.refcat.t['ID']=np.arange(0,len(self.refcat.t),1)#self.refcat.getindices()
+            if self.refcat.maincolor not in self.refcat.t.colnames:
+                f1,f2 = self.refcat.maincolor.split('_')
+                if f1 not in self.refcat.t.colnames or f2 not in self.refcat.t.colnames:
+                    raise RuntimeError('Must supply refcat_color in form magcol1_magcol2.')
+
+                self.refcat.t[self.refcat.maincolor] = self.refcat.t[f1]-self.refcat.t[f2]
+            self.refcat.t = self.refcat.t[np.where(np.isfinite(self.refcat.t[self.refcat.mainfilter]))[0]]
+            self.refcat.t = self.refcat.t.to_pandas()
                         
-        if refcat_racol is not None:
-            self.refcat.racol = refcat_racol
-        if refcat_deccol is not None:
-            self.refcat.deccol = refcat_deccol
         
         return(0)
     
     def getrefcatcolname(self,colname,refcatshort=None,
                          requiredflag=False,existsflag=True):
         """
-        returns teh column name in the main photometry catalog
+        returns the column name in the main photometry catalog
         that got copied from the reference catalog
         In general, this is refcatshort
 
@@ -1309,6 +1346,9 @@ class jwst_photclass(pdastrostatsclass):
                  refcatname=None,
                  refcat_racol=None,
                  refcat_deccol=None,
+                 refcat_magcol=None,
+                 refcat_magerrcol=None,
+                 refcat_color=None,
                  pmflag = False, # apply proper motion
                  pm_median=False,# if pm_median, then the median proper motion is added instead of the individual ones
                  photfilename=None,
@@ -1395,7 +1435,10 @@ class jwst_photclass(pdastrostatsclass):
                                  mjd=mjd,
                                  pm_median=pm_median,
                                  refcat_racol=refcat_racol,
-                                 refcat_deccol=refcat_deccol)
+                                 refcat_deccol=refcat_deccol,
+                                 refcat_magcol=refcat_magcol,
+                                 refcat_magerrcol=refcat_magerrcol,
+                                 refcat_color=refcat_color)
                 self.match_refcat(indices=ixs_clean)
             else:
                 # set refcat parameters like refcat.
