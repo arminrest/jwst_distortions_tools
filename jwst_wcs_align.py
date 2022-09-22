@@ -89,16 +89,31 @@ def infoplots(phot,ixs_good,dy_plotlim=(-4,4),dx_plotlim=(-4,4)):
 
 # plot the rotated dx or dy versus the original one
 def plot_rotated(phot,ixs,d_col,col,
+                 histotable,
+                 apply_rolling_gaussian=False,
                  d_col_rot='d_rot_tmp',
                  sp=None,
                  spi=[0,1],
-                 histolim=(-20,20),
+                 histolim=[-20,20],
                  bins=None,
                  bin_weights_flag=False,
                  title=None):
     if sp == None:
         sp=initplot(1,2)
-
+        spi=[0,1]
+        
+    # Get the limits for the plots
+    # the maximum limits are passed with histolim
+    # however, if the all data is within the limits, then
+    # shrink the limits accordingly
+    minval = np.min(phot.t.loc[ixs,d_col_rot])
+    maxval = np.max(phot.t.loc[ixs,d_col_rot])
+    if minval>histolim[0]:histolim[0]=minval
+    if maxval<histolim[1]:histolim[1]=maxval
+    # add a buffer to the min and max values
+    histolim[0]-=0.1*(maxval-minval)
+    histolim[1]+=0.1*(maxval-minval)
+        
     if phot.ixs_notuse is not None:
         phot.t.loc[phot.ixs_notuse].plot(col,d_col_rot,ax=sp[spi[0]],**plot_style['do_not_use_data'])
     phot.t.loc[ixs].plot(col,d_col,ax=sp[spi[0]],ylim=histolim,title=title,**plot_style['cut_data'])
@@ -113,6 +128,10 @@ def plot_rotated(phot,ixs,d_col,col,
                                                 xlim=histolim,color='blue',histtype='step')
         else:
             phot.t.loc[ixs,d_col_rot].plot.hist(ax=sp[spi[1]],bins=bins,xlim=histolim,color='blue',histtype='step')
+        
+        if apply_rolling_gaussian:
+            histotable.t.plot('bincenter','histosum',ax=sp[spi[1]],color='red')
+
         sp[spi[1]].set_xlabel(f'rotated {d_col}')
         #sp[spi[1]].get_legend().remove()
     return(sp)
@@ -244,11 +263,13 @@ def dxdy_plot(phot,ixs_selected, sp=None, spi = [0,1,4,5,8,9,2,6,10,3,7,11], tit
     plt.tight_layout()
     return(sp)
 
-# find the maximum value in yvals, its index, and the corresponding value in xvals
-# also indicate if there are multiple entries with the same maximum value (multiple_max=True)
-def find_info_for_maxval(xvals,yvals,use_firstindex_if_multiple=True):
+def find_info_for_maxval(histotable,xcol='bincenter',ycol='histo',use_firstindex_if_multiple=True,):
     # get the max value of the histogram, and its associated bin
     #print(histo)
+    xvals = np.array(histotable.t[xcol])
+    yvals = np.array(histotable.t[ycol])
+    N=len(histotable.t)
+    
     maxval = np.max(yvals)
     ixs_max = np.where(yvals==maxval)
     multiple_max = None
@@ -269,12 +290,12 @@ def find_info_for_maxval(xvals,yvals,use_firstindex_if_multiple=True):
     ix_minus = ix_best-1 
     if ix_minus<0: ix_minus=0
     ix_plus = ix_best+1
-    if ix_plus>len(yvals)-1: ix_plus=len(yvals)-1
+    if ix_plus>N-1: ix_plus=N-1
     while (ix_minus>0):
         if yvals[ix_minus]<=0.5*yvals[ix_best]:
             break
         ix_minus-=1
-    while (ix_plus<len(yvals)-1):
+    while (ix_plus<N-1):
         if yvals[ix_plus]<=0.5*yvals[ix_best]:
             break
         ix_plus+=1
@@ -284,54 +305,77 @@ def find_info_for_maxval(xvals,yvals,use_firstindex_if_multiple=True):
         ix_plus=1
     fwhm = xvals[ix_plus]-xvals[ix_minus]
     
-    
     return(xvals[ix_best],yvals[ix_best],ix_best,fwhm,multiple_max)
 
 # straight line.
 def f(val,slope,intercept):
     return(val*slope+intercept)
 
-def rotate_d_and_find_binmax(phot,ixs,d_col,col,
-                             Naxis_px, # Nx or Ny, depending on col
-                             d_col_rot='d_rot_tmp',
-                             binsize=0.5,
-                             bin_weights_flag=True,
-                             slope_min=-10.0/2048.0, # 
-                             slope_max=10.0/2048.0, # 
-                             slope_stepsize=1.0/2048,
-                             showplots=0,
-                             sp=None,
-                             spi=[0,1,2]):
-    rot_results = pdastroclass()
+def find_binmax_for_slope(slope,phot,ixs,d_col,col,
+                          Naxis_px,
+                          gaussian_sigma,
+                          windowsize,
+                          halfwindowsize,
+                          rot_results=None,
+                          apply_rolling_gaussian=True,
+                          d_col_rot='d_rot_tmp',
+                          binsize=0.02,
+                          bin_weights_flag=True,
+                          showplots=0,
+                          sp=None,
+                          spi=[0,1]):
 
-    if bin_weights_flag:
-        phot.t.loc[ixs,'__weights']=10**(-0.4*phot.t.loc[ixs,'mag'])
-    else:
-        phot.t.loc[ixs,'__weights']=None
+    intercept = -0.5*Naxis_px * slope
         
-    slopes = np.arange(slope_min,slope_max,slope_stepsize)
-    for slope in slopes:
-        #slope = delta4slope_pix/Nx
-        intercept = -0.5*Naxis_px * slope
+    #phot.t.loc[ixs,d_col_rot] = phot.t.loc[ixs,d_col] - f(phot.t.loc[ixs,col],slope,intercept)
+    phot.t[d_col_rot] = phot.t[d_col] - f(phot.t[col],slope,intercept)
 
-        #phot.t.loc[ixs,d_col_rot] = phot.t.loc[ixs,d_col] - f(phot.t.loc[ixs,col],slope,intercept)
-        phot.t[d_col_rot] = phot.t[d_col] - f(phot.t[col],slope,intercept)
+    # get the histogram
+    d_rotated = phot.t.loc[ixs,d_col_rot]
+    bins = np.arange(np.min(d_rotated),np.max(d_rotated)+binsize,binsize)
+    if bin_weights_flag:
+        histo = np.histogram(d_rotated,bins=bins,weights=phot.t.loc[ixs,'__weights'])
+    else:
+        histo = np.histogram(d_rotated,bins=bins)
 
-        # get the histogram
-        d_rotated = phot.t.loc[ixs,d_col_rot]
-        bins = np.arange(np.min(d_rotated),np.max(d_rotated),binsize)
-        if bin_weights_flag:
-            histo = np.histogram(d_rotated,bins=bins,weights=phot.t.loc[ixs,'__weights'])
-        else:
-            histo = np.histogram(d_rotated,bins=bins)
-        #sp = plt.subplot(111)
-        #print(histo[1])
-        #sp.plot(histo[1][1:], histo[0], 'ro')
-        # get the max value of the histogram, and its associated bin center. Note that the bincenter is 
-        # the value in the bins (left edge of the bin) + the half of the binsize
-        (bincenter4maxval,maxval,index_maxval,fwhm,multiple_max) = find_info_for_maxval(histo[1]+0.5*binsize,histo[0])
+    histotable=pdastroclass()            
+    if apply_rolling_gaussian:
+        # extend teh bins by +- halfwindowsize, since the kernel has the size windowsize. If this 
+        # extension is not done, then the values at the edges within halfwindowsize are ignored!
+        binmin = histo[1][0]+0.5*binsize-halfwindowsize*binsize
+        bins_extended = np.arange(binmin,binmin+(len(histo[0])+2*halfwindowsize)*binsize,binsize)
+        histotable.t['bincenter']=bins_extended
 
-        # Save the results
+        # fill in the histogram values: make sure the get added +halfwindowsize into the table, 
+        # since the bins got extended! The values outside are set to 0.0
+        dataindices = range(halfwindowsize,len(histo[0])+halfwindowsize)
+        histotable.t['histo']=0.0
+        histotable.t.loc[dataindices,'histo']=histo[0]
+
+        # TEST1 and TEST2 should be the same array (within floating point accuracy)
+        #print('TEST1',histo[1][:-1]+0.5*binsize)
+        #print('TEST2',histotable.t.loc[dataindices,'bincenter'])
+        #print('TEST length',len(histo[1][:-1]+0.5*binsize),len(histo[0]),len(dataindices))
+
+        histotable.t['histosum'] = histotable.t['histo'].rolling(windowsize,center=True,win_type='gaussian').sum(std=gaussian_sigma)
+        ix_nan = histotable.ix_is_null('histosum')
+        histotable.t.loc[ix_nan,'histosum']=0.0
+        #sp=initplot(1,1)
+        #histotable.t.plot('bincenter','histo',ax=sp[0],color='blue')
+        #histotable.t.plot('bincenter','histosum',ax=sp[0],color='red')
+        #histotable.write()
+
+        (bincenter4maxval,maxval,index_maxval,fwhm,multiple_max) = find_info_for_maxval(histotable,ycol='histosum')
+
+    else:
+        # Note that the bincenter is the value in the bins (left edge of the bin) + the half of the binsize
+        histotable.t['bincenter']=histo[1][:-1]+0.5*binsize
+        histotable.t['histo']=histo[0]
+
+        (bincenter4maxval,maxval,index_maxval,fwhm,multiple_max) = find_info_for_maxval(histotable)
+
+    # Save the results
+    if rot_results is not None:
         rot_results.newrow({'slope':slope,
                             'intercept':intercept,
                             'maxval':maxval,
@@ -340,17 +384,73 @@ def rotate_d_and_find_binmax(phot,ixs,d_col,col,
                             'fwhm':fwhm,
                             'multimax':multiple_max
                             })
-        # plot it if wanted
-        if showplots>2:
-            plot_rotated(phot,ixs,
-                         d_col,col,
-                         d_col_rot=d_col_rot,
-                         bins=bins,
-                         bin_weights_flag=bin_weights_flag,
-                         histolim = (bincenter4maxval-8,bincenter4maxval+8),
-                         title=f'slope:{slope}')
-        #sys.exit(0)
+    # plot it if wanted
+    if showplots>2:
+        plot_rotated(phot,ixs,
+                     d_col,col,
+                     histotable,
+                     apply_rolling_gaussian=apply_rolling_gaussian,
+                     d_col_rot=d_col_rot,
+                     bins=bins,
+                     bin_weights_flag=bin_weights_flag,
+                     sp=sp,
+                     spi=spi,
+                     histolim = [bincenter4maxval-8,bincenter4maxval+8],
+                     title=f'slope:{slope}')
 
+def rotate_d_and_find_binmax(phot,ixs,d_col,col,
+                             Naxis_px, # Nx or Ny, depending on col
+                             apply_rolling_gaussian=True,
+                             gaussian_sigma_px=0.22,
+                             d_col_rot='d_rot_tmp',
+                             binsize=0.02,
+                             bin_weights_flag=False,
+                             slope_min=-10.0/2048.0, # 
+                             slope_max=10.0/2048.0, # 
+                             slope_stepsize=1.0/2048,
+                             showplots=0,
+                             sp=None,
+                             spi=[0,1,2,3,4]):
+    print(f'########################\n### rotate {d_col} versus {col}')
+    rot_results = pdastroclass()
+
+    if bin_weights_flag:
+        print('weighting with flux!')
+        phot.t.loc[ixs,'__weights']=10**(-0.4*phot.t.loc[ixs,'mag'])
+    else:
+        phot.t.loc[ixs,'__weights']=None
+    
+    # if rolling gaussian: get window sizes!
+    if apply_rolling_gaussian:
+        # get the half window size for gaussian kernel in integer bins 
+        gaussian_sigma = gaussian_sigma_px/binsize
+        # kernel window size: 3*sigma half width
+        windowsize = int(3 * gaussian_sigma * 2)
+        # make sure the window size is uneven, so that the peak is centered!
+        if windowsize % 2 == 0:
+            windowsize+=1
+        halfwindowsize = int(windowsize*0.5)+1
+        print(f'Applying rolling gaussian:\ngaussian_sigma_px={gaussian_sigma_px}, binsize={binsize}, gaussian_sigma(bins)={gaussian_sigma}, windowsize(bins)={windowsize} halfwindowsize(bins)={halfwindowsize}')
+    
+    # Loop through the slopes
+    print(f'slope min: {slope_min}, slope max: {slope_max}, slope stepsize: slope_stepsize')
+    slopes = np.arange(slope_min,slope_max,slope_stepsize)
+    for counter in range(len(slopes)):
+        print(f'iteration {counter} out of {len(slopes)}: slope = {slopes[counter]:.6f}')
+
+        find_binmax_for_slope(slopes[counter],phot,ixs,d_col,col,
+                              Naxis_px,
+                              gaussian_sigma,
+                              windowsize,
+                              halfwindowsize,
+                              rot_results=rot_results,
+                              apply_rolling_gaussian=apply_rolling_gaussian,
+                              d_col_rot=d_col_rot,
+                              binsize=binsize,
+                              bin_weights_flag=bin_weights_flag,
+                              showplots=showplots,
+                              sp=None,
+                              spi=[0,1])
     # print the results        
     rot_results.write()
     
@@ -361,17 +461,17 @@ def rotate_d_and_find_binmax(phot,ixs,d_col,col,
         raise RuntimeError('BUUUUGGGG!!!!')
     elif (len(ixs_maxmax[0])>1):
         #print(f'\nWARNING!! more than one bin with maxvalue={maxmaxval}!')
-        multiple_max=True
         best_index=ixs_maxmax[0][0]
     else:
-        multiple_max=False
         best_index=ixs_maxmax[0][0]
     print('####BEST:')
     rot_results.write(indices=[best_index])
     
+    # make the summary plots
     if showplots>1:
         if sp is None:
-            sp = initplot(1,3)
+            sp = initplot(2,3)
+            spi=[0,1,2,4,5]
         rot_results.t.plot('slope','maxval',ax=sp[spi[0]],color='blue',title=f'{d_col}',ylabel='histogran peak value')
         rot_results.t.plot.scatter('slope','d_bestguess',ax=sp[spi[1]],color='blue',title=f'{d_col}')
         rot_results.t.plot.scatter('slope','fwhm',ax=sp[spi[2]],color='blue',title=f'{d_col}')
@@ -379,42 +479,41 @@ def rotate_d_and_find_binmax(phot,ixs,d_col,col,
         sp[spi[1]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
         sp[spi[2]].axvline(rot_results.t.loc[best_index,'slope'],  color='red',linestyle='-', linewidth=2.0)
     
-    
+        find_binmax_for_slope(rot_results.t.loc[best_index,'slope'],phot,ixs,d_col,col,
+                              Naxis_px,
+                              gaussian_sigma,
+                              windowsize,
+                              halfwindowsize,
+                              rot_results=rot_results,
+                              apply_rolling_gaussian=apply_rolling_gaussian,
+                              d_col_rot=d_col_rot,
+                              binsize=binsize,
+                              bin_weights_flag=bin_weights_flag,
+                              showplots=3,
+                              sp=sp,
+                              spi=spi[3:5])
+        
     return(rot_results,best_index)
+
 
 def sigmacut_d_rot(phot,ixs,
                    d_col,col,
                    slope,intercept,d_rot_bestguess,
                    rough_cut_px = 2.5, #This is the first rough cut:  get rid of everything d_rot_bestguess+-rough_cut_px
                    d_col_rot='d_rot_tmp',
-                   binsize=0.5,
+                   binsize=0.02,
                    bin_weights_flag=True,
                    showplots=0,
                    sp=None,
-                   spi=[0,1,2]):
+                   spi=[0]):
 
     ### recover the slope and intercept of the best binning
     phot.t[d_col_rot] = phot.t[d_col] - f(phot.t[col],slope,intercept)
     
     # Now make the rough cut! only keep data for with dx_rotated within  d_rot_bestguess+-rough_cut_px
     ixs_roughcut = phot.ix_inrange(d_col_rot,d_rot_bestguess-rough_cut_px,d_rot_bestguess+rough_cut_px,indices=ixs)
-    d_rotated = phot.t.loc[ixs,d_col_rot]
+    #d_rotated = phot.t.loc[ixs,d_col_rot]
     
-    if showplots>1:
-        if sp is None:
-            sp=initplot(1,3)
-
-        bins = np.arange(np.min(d_rotated),np.max(d_rotated),binsize)
-        plot_rotated(phot,ixs_roughcut,
-                     d_col,col,
-                     d_col_rot=d_col_rot,
-                     sp=sp,
-                     spi=spi[:2],
-                     bins=bins,
-                     bin_weights_flag=bin_weights_flag,
-                     histolim = (d_rot_bestguess-3*rough_cut_px,d_rot_bestguess+3*rough_cut_px),
-                     title=f'First rough cut: {d_rot_bestguess:.3f}+-{rough_cut_px:.3f} for slope={slope:.6f}')
-
     print('\n####################\n### d_rotated cut')
     #ixs_clean4average = phot_clear.ix_inrange(d_col,0,3,indices=ixs_clear_cut)
     phot.calcaverage_sigmacutloop(d_col_rot,verbose=3,indices=ixs_roughcut,percentile_cut_firstiteration=65)
@@ -424,33 +523,29 @@ def sigmacut_d_rot(phot,ixs,
     if showplots>1:
         title = f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left\n'
         title += f'mean = {phot.statparams["mean"]:.3f} px, stdev = {phot.statparams["stdev"]:.3f} px'
-        phot.t.loc[AnotB(ixs_roughcut,ixs_cut)].plot(col,d_col_rot,style='o',ax=sp[spi[2]],color='red', ms=5 ,alpha=0.3,title=title)
-        phot.t.loc[ixs_cut].plot(col,d_col_rot,style='o',ax=sp[spi[2]],color='blue', 
+        phot.t.loc[AnotB(ixs_roughcut,ixs_cut)].plot(col,d_col_rot,style='o',ax=sp[spi[0]],color='red', ms=5 ,alpha=0.3,title=title)
+        phot.t.loc[ixs_cut].plot(col,d_col_rot,style='o',ax=sp[spi[0]],color='blue', 
                                  ms=5 ,alpha=0.3,ylabel=f'{d_col} [pixels]',
                                  title=title)
         if phot.ixs_notuse is not None:
-            phot.t.loc[phot.ixs_notuse].plot(col,d_col_rot,style='o',ax=sp[spi[2]],color='gray', ms=1,alpha=0.5)
-        sp[spi[2]].get_legend().remove()
+            phot.t.loc[phot.ixs_notuse].plot(col,d_col_rot,style='o',ax=sp[spi[0]],color='gray', ms=1,alpha=0.5)
+        sp[spi[0]].get_legend().remove()
     
         # set the appropriate y-axis limits
         (ylim_min,ylim_max) = (phot.t.loc[ixs_roughcut,d_col_rot].min(),phot.t.loc[ixs_roughcut,d_col_rot].max())
         ylim_min -= 0.1*(ylim_max-ylim_min)
         ylim_max += 0.1*(ylim_max-ylim_min)
-        sp[spi[2]].set_ylim(ylim_min,ylim_max)
-        #sp[spi[2]].set_ylim(sp[spi[2]].get_ylim(),(ylim_min,ylim_max))
-        
-        
-        #phot.t.loc[ixs_roughcut].plot.scatter(col,d_col_rot,ax=sp[spi[2]],color='red')
-        #phot.t.loc[ixs_cut].plot.scatter(col,d_col_rot,ax=sp[spi[2]],color='blue',
-        #                                 ylabel='dx in pixels',
-        #                                 title=f'3-sigma cut: {len(ixs_cut)} out of {len(ixs_roughcut)} left')
+        sp[spi[0]].set_ylim(ylim_min,ylim_max)
+        plt.tight_layout() 
+
     return(ixs_cut,ixs_roughcut)
+
 
 def histogram_cut(phot,ixs,d_col,col,
                   Naxis_px, # Nx or Ny, depending on col
                   d_col_rot='d_rot_tmp',
-                  binsize=0.1,
-                  bin_weights_flag=True,
+                  binsize=0.02,
+                  bin_weights_flag=False,
                   slope_min=-10.0/2048.0, # 
                   slope_max=10.0/2048.0, # 
                   slope_stepsize=1.0/2048,
@@ -467,6 +562,7 @@ def histogram_cut(phot,ixs,d_col,col,
             sp=initplot(2,3)
     else:
         sp=None
+
     (rot_results,best_index) = rotate_d_and_find_binmax(phot,ixs,
                                                         d_col,col,
                                                         Naxis_px,
@@ -478,9 +574,8 @@ def histogram_cut(phot,ixs,d_col,col,
                                                         slope_stepsize=slope_stepsize,
                                                         showplots=showplots,
                                                         sp=sp,
-                                                        spi=[0,1,2])
-
-
+                                                        spi=[0,1,2,3,4])
+    
     # Using the best dy_rotated, we first remove all entries with dy_rotated outside of dy_bestguess+-Nfwhm*fwhm
     # Note that FWHM ~ 2.355 stdev, so Nfwhm*fwhm should be at least 3*stdev. This is the first ROUGH cut, with 
     # which we just want to remove excessive amounts of outliers. Then a 3-sigma cut is done on the *rotated* dy
@@ -493,7 +588,7 @@ def histogram_cut(phot,ixs,d_col,col,
                                             bin_weights_flag=bin_weights_flag,
                                             showplots=showplots,
                                             sp=sp,
-                                            spi=[3,4,5]
+                                            spi=[5]
                                             )
     plt.tight_layout()   
     return(ixs_cut,rot_results)
@@ -682,7 +777,7 @@ class jwst_wcs_align(apply_distortion_singleim):
             tweakreg.snr_threshold = 50
             tweakreg.separation = 9
             tweakreg.searchrad = 0.5
-            tweakreg.minobj = 7
+            tweakreg.minobj = 5
             tweakreg.min_gaia = 30
             tweakreg.xoffset = 0
             tweakreg.yoffset = 0
@@ -759,7 +854,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                  # histogram cut parameters
                                  histocut_order = 'dxdy', # this can only be 'dxdy' or 'dydx'
                                  binsize_px = 0.2, # this is the binsize of the dx/dy histograms
-                                 bin_weights_flag=True,# If bin_weights_flag is set to True, 
+                                 bin_weights_flag=False,# If bin_weights_flag is set to True, 
                                                        #then the dx/dy bins are weighted by 
                                                        # the flux of the detection.
                                  slope_min=-10/2048.0, 
