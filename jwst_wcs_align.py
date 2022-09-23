@@ -551,6 +551,8 @@ def histogram_cut(phot,ixs,d_col,col,
                   slope_stepsize=1.0/2048,
                   #This is the first rough cut:  get rid of everything d_rot_bestguess+-Nfwhm*fwhm,
                   Nfwhm=2.0,
+                  rough_cut_px_min=None,
+                  rough_cut_px_max=None,
                   showplots=0,
                   sp=None
                   ):
@@ -579,11 +581,21 @@ def histogram_cut(phot,ixs,d_col,col,
     # Using the best dy_rotated, we first remove all entries with dy_rotated outside of dy_bestguess+-Nfwhm*fwhm
     # Note that FWHM ~ 2.355 stdev, so Nfwhm*fwhm should be at least 3*stdev. This is the first ROUGH cut, with 
     # which we just want to remove excessive amounts of outliers. Then a 3-sigma cut is done on the *rotated* dy
+    rough_cut_px= Nfwhm*rot_results.t.loc[best_index,'fwhm']
+    # when using a rolling gaussian to smooth the histogram (in particular for small numbers of good matches), 
+    # the Nfwhm*fwhm method does nto work well. In that case it is better to use upper/lower limits
+    print(f'Setting rough_cut_px={rough_cut_px}. limits: ({rough_cut_px_min}-{rough_cut_px_max})')
+    if (rough_cut_px_max is not None) and rough_cut_px>rough_cut_px_max:
+        rough_cut_px=rough_cut_px_max
+    if (rough_cut_px_min is not None) and rough_cut_px<rough_cut_px_min:
+        rough_cut_px=rough_cut_px_min
+    print(f'Setting rough_cut_px={rough_cut_px}')
+    
     (ixs_cut,ixs_roughcut) = sigmacut_d_rot(phot,ixs,d_col,col,
                                             rot_results.t.loc[best_index,'slope'],
                                             rot_results.t.loc[best_index,'intercept'],
                                             rot_results.t.loc[best_index,'d_bestguess'],
-                                            rough_cut_px = Nfwhm*rot_results.t.loc[best_index,'fwhm'],
+                                            rough_cut_px =rough_cut_px ,
                                             binsize=binsize,
                                             bin_weights_flag=bin_weights_flag,
                                             showplots=showplots,
@@ -605,6 +617,9 @@ class jwst_wcs_align(apply_distortion_singleim):
         self.sip_err = 0.1
         self.sip_degree = 3
         self.sip_points = 128
+
+        self.rough_cut_px_min=0.3
+        self.rough_cut_px_max=0.8
 
         
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
@@ -937,6 +952,7 @@ class jwst_wcs_align(apply_distortion_singleim):
             d_col2,col2,Naxis2_px = 'dx','y',Ny
 
 
+        print(f'FUCK1: {self.rough_cut_px_min}{self.rough_cut_px_max}')
         # Do the histogram cut on the first dcol (dx or dy, as selected)
         (ixs_cut1,rot_results1) = histogram_cut(phot,ixs,d_col1,col1,Naxis1_px,
                                                 binsize=binsize_px,
@@ -945,6 +961,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                 slope_max=slope_max,
                                                 slope_stepsize=slope_stepsize,
                                                 Nfwhm=Nfwhm,
+                                                rough_cut_px_min=self.rough_cut_px_min,
+                                                rough_cut_px_max=self.rough_cut_px_max,
                                                 showplots=showplots)
 
         # Do the histogram cut on the second dcol (dx or dy, as selected)
@@ -955,6 +973,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                 slope_max=slope_max,
                                                 slope_stepsize=slope_stepsize,
                                                 Nfwhm=Nfwhm,
+                                                rough_cut_px_min=self.rough_cut_px_min,
+                                                rough_cut_px_max=self.rough_cut_px_max,
                                                 showplots=showplots)
 
 
