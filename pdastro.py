@@ -1226,8 +1226,6 @@ class pdastrostatsclass(pdastroclass):
         else:
             self.statparams['Nnan']= 0
             
-
-
         while ((self.statparams['i']<Nitmax) or (Nitmax==0)) and (not self.statparams['converged']):
             # median only in first iteration and if wanted
             medianflag = median_firstiteration and (self.statparams['i']==0) and (Nsigma!=None)
@@ -1259,7 +1257,8 @@ class pdastrostatsclass(pdastroclass):
                 self.statparams['converged']=False
                 break
             # Only do a sigma cut if wanted
-            if Nsigma == None or Nsigma == 0.0:
+            if Nsigma is None or Nsigma == 0.0:
+                if verbose: print('no iteration, exiting...')
                 self.statparams['converged']=True
                 break
             # No changes anymore? If yes converged!!!

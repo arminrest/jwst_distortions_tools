@@ -502,6 +502,8 @@ def sigmacut_d_rot(phot,ixs,
                    rough_cut_px = 2.5, #This is the first rough cut:  get rid of everything d_rot_bestguess+-rough_cut_px
                    d_col_rot='d_rot_tmp',
                    binsize=0.02,
+                   Nsigma=3.0,
+                   percentile_cut_firstiteration=75,
                    bin_weights_flag=True,
                    showplots=0,
                    sp=None,
@@ -514,9 +516,12 @@ def sigmacut_d_rot(phot,ixs,
     ixs_roughcut = phot.ix_inrange(d_col_rot,d_rot_bestguess-rough_cut_px,d_rot_bestguess+rough_cut_px,indices=ixs)
     #d_rotated = phot.t.loc[ixs,d_col_rot]
     
-    print('\n####################\n### d_rotated cut')
+    print(f'\n####################\n### d_rotated cut (Nsigma={Nsigma})')
+    if Nsigma is None or Nsigma==0.0:
+        # don't do percentile cut if there are no iterations!
+        percentile_cut_firstiteration = None
     #ixs_clean4average = phot_clear.ix_inrange(d_col,0,3,indices=ixs_clear_cut)
-    phot.calcaverage_sigmacutloop(d_col_rot,verbose=3,indices=ixs_roughcut,percentile_cut_firstiteration=65)
+    phot.calcaverage_sigmacutloop(d_col_rot,verbose=3,indices=ixs_roughcut,Nsigma=Nsigma,percentile_cut_firstiteration=percentile_cut_firstiteration)
     print(phot.statstring())
     ixs_cut = phot.statparams['ix_good']
 
@@ -553,11 +558,13 @@ def histogram_cut(phot,ixs,d_col,col,
                   Nfwhm=2.0,
                   rough_cut_px_min=None,
                   rough_cut_px_max=None,
+                  Nsigma=3.0,
                   showplots=0,
                   sp=None
                   ):
 
     print(f'### Doing histogram cut for {d_col}, slope_min:{slope_min:.6f} slope_max:{slope_max:.6f} slope_stepsize:{slope_stepsize:.6f}')
+    print(f'Nfwhm={Nfwhm}, rough_cut_px_min={rough_cut_px_min}, rough_cut_px_max={rough_cut_px_max}, Nsigma={Nsigma}')
     # initialize plot
     if showplots>1:
         if sp is None:
@@ -597,6 +604,7 @@ def histogram_cut(phot,ixs,d_col,col,
                                             rot_results.t.loc[best_index,'d_bestguess'],
                                             rough_cut_px =rough_cut_px ,
                                             binsize=binsize,
+                                            Nsigma=Nsigma,
                                             bin_weights_flag=bin_weights_flag,
                                             showplots=showplots,
                                             sp=sp,
@@ -621,7 +629,8 @@ class jwst_wcs_align(apply_distortion_singleim):
         self.rough_cut_px_min=0.3
         self.rough_cut_px_max=0.8
 
-        
+        self.d_rotated_Nsigma=3.0        
+
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
         if parser is None:
             parser = argparse.ArgumentParser(usage=usage,conflict_handler=conflict_handler)
@@ -674,6 +683,11 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--sip_degree', default=3, type=int,help='degree for SIP transformation.')
         parser.add_argument('--sip_points', default=128, type=int,help='npoints for SIP transformation.')
         parser.add_argument('--ee_radius', default=70, type=int, help='encircled energy percentage (multiples of 10) for photometry')
+
+        parser.add_argument('--rough_cut_px_min', default=0.3, type=float,help='first rough cut: best d_rotated+-rough_cut_pix. This is the lower limit for rough_cut (default=%(default)s)')
+        parser.add_argument('--rough_cut_px_max', default=0.8, type=float,help='first rough cut: best d_rotated+-rough_cut_pix. This is the upper limit for rough_cut (default=%(default)s)')
+        parser.add_argument('--d_rotated_Nsigma', default=3.0, type=float,help='Nsigma for sigma cut of d_rotated. If 0.0, then 3-sigma cut is skipped (default=%(default)s)')
+
         return(parser)
 
     # make some rough cuts on dmag, d2d, and Nbright
@@ -952,7 +966,6 @@ class jwst_wcs_align(apply_distortion_singleim):
             d_col2,col2,Naxis2_px = 'dx','y',Ny
 
 
-        print(f'FUCK1: {self.rough_cut_px_min}{self.rough_cut_px_max}')
         # Do the histogram cut on the first dcol (dx or dy, as selected)
         (ixs_cut1,rot_results1) = histogram_cut(phot,ixs,d_col1,col1,Naxis1_px,
                                                 binsize=binsize_px,
@@ -963,6 +976,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                 Nfwhm=Nfwhm,
                                                 rough_cut_px_min=self.rough_cut_px_min,
                                                 rough_cut_px_max=self.rough_cut_px_max,
+                                                Nsigma=self.d_rotated_Nsigma,
                                                 showplots=showplots)
 
         # Do the histogram cut on the second dcol (dx or dy, as selected)
@@ -975,6 +989,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                 Nfwhm=Nfwhm,
                                                 rough_cut_px_min=self.rough_cut_px_min,
                                                 rough_cut_px_max=self.rough_cut_px_max,
+                                                Nsigma=self.d_rotated_Nsigma,
                                                 showplots=showplots)
 
 
@@ -1210,6 +1225,12 @@ if __name__ == '__main__':
     wcs_align.sip_err = args.sip_err
     wcs_align.sip_degree = args.sip_degree
     wcs_align.sip_points = args.sip_points
+    
+    wcs_align.rough_cut_px_min = args.rough_cut_px_min
+    wcs_align.rough_cut_px_max = args.rough_cut_px_max
+    wcs_align.d_rotated_Nsigma = args.d_rotated_Nsigma
+    
+    
     #wcs_align.calphot=jwst_photclass()
     
     wcs_align.set_outdir(args.outrootdir, args.outsubdir)
