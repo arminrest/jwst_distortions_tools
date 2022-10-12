@@ -35,7 +35,6 @@ from astropy.modeling.models import Polynomial2D, Mapping, Shift
 import astropy.units as u
 from jwst.datamodels import DistortionModel
 from stdatamodels import util
-from mirage.utils.siaf_interface import sci_subarray_corners
 import numpy as np
 import pysiaf
 import argparse,glob,re,sys,os
@@ -270,6 +269,9 @@ class coeffs2asdf(pdastroclass):
         ----------
         siaf_instance : pysiaf.Siaf('nircam')
         """
+        
+        from mirage.utils.siaf_interface import sci_subarray_corners
+
         siaf_aperture = siaf_instance[apername]
         xref = siaf_aperture.XSciRef
         yref = siaf_aperture.YSciRef
