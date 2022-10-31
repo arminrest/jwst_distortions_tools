@@ -1,0 +1,6 @@
+git+https://github.com/spacetelescope/jwst.git
+pandas
+pysiaf
+astroquery
+git+https://github.com/spacetelescope/jwst-calibration-field.git
+git+https://github.com/jpierel14/tweakreg_hack.git
