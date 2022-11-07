@@ -82,7 +82,15 @@ class align_wcs_batch(apply_distortions):
             self.wcs_align.outdir = self.outdir
 
             self.wcs_align.verbose = self.verbose
+            self.wcs_align.replace_sip = self.replace_sip
+            self.wcs_align.sip_err = self.sip_err
+            self.wcs_align.sip_degree = self.sip_degree
+            self.wcs_align.sip_points = self.sip_points
             
+            self.wcs_align.rough_cut_px_min = self.rough_cut_px_min
+            self.wcs_align.rough_cut_px_max = self.rough_cut_px_max
+            self.wcs_align.d_rotated_Nsigma = self.d_rotated_Nsigma
+
             # If debugging: just run one, outside the try block so that we can get real error messages
             if self.debug:
                 self.wcs_align.run_all(inputfile,
@@ -159,7 +167,16 @@ if __name__ == '__main__':
     
     align_batch.verbose=args.verbose
     align_batch.debug=args.debug
-    
+    align_batch.replace_sip = args.replace_sip
+    align_batch.sip_err = args.sip_err
+    align_batch.sip_degree = args.sip_degree
+    align_batch.sip_points = args.sip_points
+     
+    align_batch.rough_cut_px_min = args.rough_cut_px_min
+    align_batch.rough_cut_px_max = args.rough_cut_px_max
+    align_batch.d_rotated_Nsigma = args.d_rotated_Nsigma
+
+
     # set the output directory
     align_batch.set_outdir(outrootdir=args.outrootdir,
                            outsubdir=args.outsubdir)

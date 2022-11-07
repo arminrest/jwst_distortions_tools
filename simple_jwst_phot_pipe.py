@@ -560,8 +560,19 @@ class jwst_photclass(pdastrostatsclass):
                 if use_dq: 
                     dq = self.im['DQ'].data
                     print('Using DQ extension!!')
+                if self.im['AREA'].data.shape != self.im['SCI'].data.shape:
+                    print(f'WARNING: AREA extension has different dimensions ({self.im["AREA"].data.shape}) than SCI extension ({self.im["SCI"].data.shape})! Using image header info to fix this...')
+                    SUBSTRT1=self.primaryhdr['SUBSTRT1']
+                    SUBSTRT2=self.primaryhdr['SUBSTRT2']
+                    SUBSIZE1=self.primaryhdr['SUBSIZE1']
+                    SUBSIZE2=self.primaryhdr['SUBSIZE2']
+                    print(f'subarray area = AREA[{SUBSTRT2}-1:{SUBSTRT2}-1+{SUBSIZE2},{SUBSTRT1}-1:{SUBSTRT1}-1+{SUBSIZE1}]')
+                    area = self.im['AREA'].data[SUBSTRT2-1:SUBSTRT2-1+SUBSIZE2,SUBSTRT1-1:SUBSTRT1-1+SUBSIZE1]
+                else:
+                    area = self.im['AREA'].data
+                    
                 (self.data,self.mask,self.DNunits) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
-                                                                        area = self.im['AREA'].data,
+                                                                        area = area,
                                                                         dq = dq,
                                                                         DNunits=DNunits)
             elif self.imagetype == 'i2d':
@@ -923,10 +934,14 @@ class jwst_photclass(pdastrostatsclass):
     def clean_phottable(self,SNR_min=3.0,indices=None):
         # remove nans
         ixs = self.ix_not_null(['mag','dmag'],indices=indices)
+        #self.write()
         
         if SNR_min is not None:
             dmag_max = 1.086 * 1.0/SNR_min
+            #print(f'AAAAAAAAAAAAAAAA {len(ixs)} {SNR_min} {dmag_max}')
             ixs = self.ix_inrange('dmag',None,dmag_max,indices=ixs)
+        #print(f'AAAAAAAAAAAAAAAA22 {len(ixs)}')
+        #sys.exit(0)
         return(ixs)
 
     def xy_to_radec(self,xcol='x',ycol='y',racol='ra',deccol='dec',indices=None,
