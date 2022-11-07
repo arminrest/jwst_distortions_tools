@@ -427,9 +427,6 @@ def xy_to_idl(x,y, primaryhdr, scihdr,aperturename='APERNAME',instrument='INSTRU
     xidl,yidl = ap.sci_to_idl(x+1,y+1)
     return xidl, yidl
 
-
-
-
 class jwst_photclass(pdastrostatsclass):
     def __init__(self):
         pdastrostatsclass.__init__(self)
@@ -535,7 +532,7 @@ class jwst_photclass(pdastrostatsclass):
         self.aperture  = self.dm.meta.aperture.name
         
         print(self.instrument,self.detector,self.filtername,self.pupil,self.subarray,self.aperture)
-        #sys.exit()
+
         if self.verbose: print(f'Instrument: {self.instrument}, aperture:{self.aperture}')
         
         if imagetype is None:
@@ -934,14 +931,14 @@ class jwst_photclass(pdastrostatsclass):
     def clean_phottable(self,SNR_min=3.0,indices=None):
         # remove nans
         ixs = self.ix_not_null(['mag','dmag'],indices=indices)
+        print(f'{len(ixs)} objects left after removing entries with NaNs in mag or dmag column')
         #self.write()
         
         if SNR_min is not None:
             dmag_max = 1.086 * 1.0/SNR_min
-            #print(f'AAAAAAAAAAAAAAAA {len(ixs)} {SNR_min} {dmag_max}')
             ixs = self.ix_inrange('dmag',None,dmag_max,indices=ixs)
-        #print(f'AAAAAAAAAAAAAAAA22 {len(ixs)}')
-        #sys.exit(0)
+            print(f'SNR_min cut: {len(ixs)} objects left after removing entries dmag>{dmag_max} (SNR<{SNR_min})')
+
         return(ixs)
 
     def xy_to_radec(self,xcol='x',ycol='y',racol='ra',deccol='dec',indices=None,
@@ -950,7 +947,6 @@ class jwst_photclass(pdastrostatsclass):
 
         image_model = ImageModel(self.im)
         
-        print(f'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF {xshift} {yshift}')
         ra,dec = image_model.meta.wcs(self.t.loc[ixs,xcol]+xshift, self.t.loc[ixs,ycol]+yshift)
         coord = SkyCoord(ra, dec, unit='deg')
         
@@ -1009,7 +1005,7 @@ class jwst_photclass(pdastrostatsclass):
 
     def init_refcat(self,refcatname,mjd=None,
                     refcat_racol=None,refcat_deccol=None,refcat_magcol=None,
-                    refcat_magerrcol=None,refcat_color=None):
+                    refcat_magerrcol=None,refcat_colorcol=None):
         self.refcat = pdastroclass()
 
         self.refcat.name = refcatname
@@ -1071,7 +1067,7 @@ class jwst_photclass(pdastrostatsclass):
             self.refcat.cols2copy = []#['ID','ra_error_mas','dec_error_mas','J2mag','K2mag','J2_K2']
             self.refcat.mainfilter = refcat_magcol
             self.refcat.mainfilter_err = refcat_magerrcol
-            self.refcat.maincolor = refcat_color
+            self.refcat.maincolor = refcat_colorcol
                 
         if refcat_racol is not None:
             self.refcat.racol = refcat_racol
@@ -1080,9 +1076,9 @@ class jwst_photclass(pdastrostatsclass):
         if refcat_magcol is not None:
             self.refcat.mainfilter = refcat_magcol
         if refcat_magerrcol is not None:
-            self.refcat.mainfilter = refcat_magerrcol
-        if refcat_color is not None:
-            self.refcat.maincolor = refcat_color
+            self.refcat.mainfilter_err = refcat_magerrcol
+        if refcat_colorcol is not None:
+            self.refcat.maincolor = refcat_colorcol
                 
         return(0)
 
@@ -1091,13 +1087,13 @@ class jwst_photclass(pdastrostatsclass):
                     mjd=None,
                     pm_median=False,
                     refcat_racol=None,refcat_deccol=None,refcat_magcol=None,
-                    refcat_magerrcol=None,refcat_color=None,pmflag=True):
+                    refcat_magerrcol=None,refcat_colorcol=None,pmflag=True):
 
         # initialize the refcat, and set racol,deccol and other
         # parameters depending on the choice of refcat
         self.init_refcat(refcatname,mjd=mjd,
                          refcat_racol=refcat_racol,refcat_deccol=refcat_deccol,refcat_magcol=refcat_magcol,
-                         refcat_magerrcol=refcat_magerrcol,refcat_color=refcat_color)
+                         refcat_magerrcol=refcat_magerrcol,refcat_colorcol=refcat_colorcol)
 
         print('RA/Dec columns in reference catalog: ',self.refcat.racol,self.refcat.deccol)
         
@@ -1120,9 +1116,11 @@ class jwst_photclass(pdastrostatsclass):
                 if ('ra' not in self.refcat.t.columns and self.refcat.racol is None) or\
                  ('dec' not in self.refcat.t.columns and self.refcat.deccol is None):
                     raise RuntimeError('When supplying a catalog, either use ra/dec colnames or set refcat_racol and refcat_deccol.')
-                if self.refcat.mainfilter is None or self.refcat.mainfilter_err is None or self.refcat.maincolor is None:
-                    raise RuntimeError("When using a custom catalog, must supply refcat_magcol, refcat_magcolerr,"+\
-                        " and refcat_color as coloumname1_columnname_2")
+#                if self.refcat.mainfilter is None or self.refcat.mainfilter_err is None or self.refcat.maincolor is None:
+#                    raise RuntimeError("When using a custom catalog, must supply refcat_magcol, refcat_magcolerr,"+\
+#                        " and refcat_colorcol as coloumname1_columnname_2")
+                if self.refcat.mainfilter is None :
+                    raise RuntimeError("When using a custom catalog, must supply refcat_magcol")
             else:
                 try:
                     self.refcat.t = get_astroquery_cat(ra0,dec0,radius_deg,catalog_name=refcatname)
@@ -1132,16 +1130,20 @@ class jwst_photclass(pdastrostatsclass):
                 if self.refcat.racol is None or self.refcat.deccol is None or self.refcat.mainfilter is None or\
                                     self.refcat.mainfilter_err is None or self.refcat.maincolor is None:
                     raise RuntimeError("When using an astroquery catalog, must supply refcat_racol,"+\
-                        " refcat_deccol, refcat_magcol, refcat_magcolerr, and  refcat_color as coloumname1_columnname_2 ("+\
+                        " refcat_deccol, refcat_magcol, refcat_magcolerr, and  refcat_colorcol as coloumname1_columnname_2 ("+\
                             "Column names are: "+','.join(self.refcat.t.colnames)+')')
 
             self.refcat.t['ID']=np.arange(0,len(self.refcat.t),1)#self.refcat.getindices()
-            if self.refcat.maincolor not in self.refcat.t.colnames:
-                f1,f2 = self.refcat.maincolor.split('_')
-                if f1 not in self.refcat.t.colnames or f2 not in self.refcat.t.colnames:
-                    raise RuntimeError('Must supply refcat_color in form magcol1_magcol2.')
 
-                self.refcat.t[self.refcat.maincolor] = self.refcat.t[f1]-self.refcat.t[f2]
+            # make sure color is defined if maincolor is not None
+            if self.refcat.maincolor is not None:
+                if self.refcat.maincolor not in self.refcat.t.colnames:
+                    f1,f2 = self.refcat.maincolor.split('_')
+                    if f1 not in self.refcat.t.colnames or f2 not in self.refcat.t.colnames:
+                        raise RuntimeError('Must supply refcat_colorcol in form magcol1_magcol2.')
+    
+                    self.refcat.t[self.refcat.maincolor] = self.refcat.t[f1]-self.refcat.t[f2]
+                    
             self.refcat.t = self.refcat.t[np.where(np.isfinite(self.refcat.t[self.refcat.mainfilter]))[0]]
             self.refcat.t = self.refcat.t.to_pandas()
                         
@@ -1297,7 +1299,7 @@ class jwst_photclass(pdastrostatsclass):
         print(f'Keeping {len(ixs_cat)}  after removing NaNs from ra/dec')
 
         if len(ixs_cat) == 0:
-            print('WARNING!!!! 0 Gaia sources from catalog within the image bounderies! skipping the rest of the steps calculating x,y of the Gaia sources etc... ')
+            print('WARNING!!!! 0 sources from reference catalog within the image bounderies! skipping the rest of the steps calculating x,y of the Gaia sources etc... ')
             return(0)
 
         # Get the detector x,y position
@@ -1324,7 +1326,7 @@ class jwst_photclass(pdastrostatsclass):
             cols2copy.append(self.refcat.maincolor)
         cols2copy.extend(self.refcat.cols2copy)
         cols2copy = unique(cols2copy)
-
+        
         #self.refcatshort = refcatshort
         #self.refcat_racol = None
         #self.refcat_deccol = None
@@ -1403,6 +1405,7 @@ class jwst_photclass(pdastrostatsclass):
             for y in [0,ny-1]:     
                 ra,dec = image_model.meta.wcs(x,y)
                 radius_deg.append(coord0.separation(SkyCoord(ra,dec,unit=(u.deg, u.deg), frame='icrs')).deg)
+        print('bbbbbbb',radius_deg)
         radius_deg = np.amax(radius_deg)
 
         print(ra0,dec0,radius_deg)
@@ -1415,7 +1418,7 @@ class jwst_photclass(pdastrostatsclass):
                  refcat_deccol=None,
                  refcat_magcol=None,
                  refcat_magerrcol=None,
-                 refcat_color=None,
+                 refcat_colorcol=None,
                  pmflag = False, # apply proper motion
                  pm_median=False,# if pm_median, then the median proper motion is added instead of the individual ones
                  photfilename=None,
@@ -1473,6 +1476,14 @@ class jwst_photclass(pdastrostatsclass):
         # get the indices of good stars
         ixs_clean = self.clean_phottable(SNR_min=SNR_min)
         print(f'{len(ixs_clean)} out of {len(self.getindices())} entries remain in photometry table')
+        if len(ixs_clean)<1:
+            self.write()
+            raise RuntimeError('NO  OBJECTS FOUND IN  IMAGE!!')
+        
+        self.write('DELME0.txt',columns=['x','y','mag','dmag'])
+        self.write('DELME1.txt',indices=ixs_clean,columns=['x','y','mag','dmag'])
+        #sys.exit(0)
+        
         if Nbright4match is not None:
             ixs_sort = self.ix_sort_by_cols(['mag'],indices=ixs_clean)
             ixs_clean = ixs_sort[:Nbright4match]
@@ -1497,8 +1508,9 @@ class jwst_photclass(pdastrostatsclass):
             else: 
                 mjd=None
             if (rematch_refcat or (not photcat_loaded)):
-                if self.verbose: print(f'Getting {refcatname} and matching it')
                 (ra0,dec0,radius_deg)=self.get_radecinfo_image()
+                radius_deg *=2.0
+                if self.verbose: print(f'Getting {refcatname} and matching it: ra={ra0} dec={dec0} radius={radius_deg} deg')
                 self.load_refcat(refcatname,
                                  ra0,dec0,radius_deg,
                                  mjd=mjd,
@@ -1507,7 +1519,8 @@ class jwst_photclass(pdastrostatsclass):
                                  refcat_deccol=refcat_deccol,
                                  refcat_magcol=refcat_magcol,
                                  refcat_magerrcol=refcat_magerrcol,
-                                 refcat_color=refcat_color)
+                                 refcat_colorcol=refcat_colorcol)
+                self.refcat.write('DELMErefcat.txt')
                 self.match_refcat(indices=ixs_clean)
             else:
                 # set refcat parameters like refcat.
@@ -1528,7 +1541,9 @@ class jwst_photclass(pdastrostatsclass):
 class hst_photclass(jwst_photclass):
     def __init__(self,instrument,image_filter,psf_fwhm,aperture_radius,
         aperture_name,detector=None,pupil=None,subarray=None):
+
         from stsci.skypac import pamutils
+
 
         jwst_photclass.__init__(self)
 
@@ -1583,8 +1598,8 @@ class hst_photclass(jwst_photclass):
                     dq = self.im['DQ'].data
                     print('Using DQ extension!!')
                 (self.data,self.mask) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
-                                                                        area = pamutils.pam_from_file(self.imagename, ('sci', 1), self.imagename + '_pam.fits'),
-                                                                        dq = dq)
+                                                           area = pamutils.pam_from_file(self.imagename, ('sci', 1), self.imagename + '_pam.fits'),
+                                                           dq = dq)
             elif self.imagetype == 'drz':
                 (self.data,self.mask) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header)
             else:
@@ -1774,7 +1789,6 @@ class hst_photclass(jwst_photclass):
                     xshift=0.0,yshift=0.0):
         ixs = self.getindices(indices=indices)
         
-        print(f'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF {xshift} {yshift}')
         coord = self.sci_wcs.pixel_to_world(self.t.loc[ixs,xcol]+xshift, self.t.loc[ixs,ycol]+yshift)
         
         
