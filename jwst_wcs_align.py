@@ -646,7 +646,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--distortion_file', default=None, help='distortion file, in asdf format. If not None, distortion file is applied to the cal image')
         parser.add_argument('--skip_applydistortions_if_exists', default=False, action='store_true', help='If the output cal file already exists, skip running the level 2 pipeline to assign the distortion terms, assuming this has already been done.')
 
-        parser.add_argument('--SNR_min', default=10.0,type=float, help='mininum SNR for object in image to be used for analysis (default=%(default)s)')
+        parser.add_argument('--SNR_min', default=None,type=float, help='mininum SNR for object in image to be used for analysis (default=%(default)s)')
 
         parser.add_argument('--use_dq', default=False, action='store_true', help='use the DQ extensions for masking')
 
@@ -654,6 +654,9 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--refcat', default='Gaia', help='reference catalog. Can be a filename or Gaia (default=%(default)s)')
         parser.add_argument('--refcat_racol', default=None, help='RA column of reference catalog. If None, then automatically determined (default=%(default)s)')
         parser.add_argument('--refcat_deccol', default=None, help='Dec column of reference catalog. If None, then automatically determined (default=%(default)s)')
+        parser.add_argument('--refcat_magcol', default=None, help='mag column of reference catalog. If None and not one of the default refcats like gaia, then 3rd column is used (default=%(default)s)')
+        parser.add_argument('--refcat_magerrcol', default=None, help='magerr column of reference catalog. If None, then not used  (default=%(default)s)')
+        parser.add_argument('--refcat_colorcol', default=None, help='color column of reference catalog. If None, then not used (default=%(default)s)')
         parser.add_argument('--refcat_pmflag', default=False, action='store_true', help='Apply the proper motion correction (only for catalogs it is applicable, e.g., gaia')
         parser.add_argument('--refcat_pmmedian', default=False, action='store_true', help='Apply the MEDIAN proper motion correction (only for catalogs it is applicable, e.g., gaia')
         parser.add_argument('--photfilename', default='auto', help='photometry output filename. if "auto", the fits in the image filename is substituted with phot.txt (default=%(default)s)')
@@ -663,7 +666,7 @@ class jwst_wcs_align(apply_distortion_singleim):
         parser.add_argument('--rematch_refcat', default=False, action='store_true', help='if --load_photcat_if_exists and the photcat already exists, load the photcat, but rematch with refcat')
 
         parser.add_argument('--d2d_max', default=None, type=float, help='maximum distance between source in image and refcat object, in arcsec (default=%(default)s)')
-        parser.add_argument('--dmag_max', default=0.1, type=float, help='maximum uncertainty of sources in image (default=%(default)s)')
+        parser.add_argument('--dmag_max', default=None, type=float, help='maximum uncertainty of sources in image (default=%(default)s)')
         parser.add_argument('--sharpness_lim', default=(0.4,1.0), nargs=2, type=float, help='sharpness limits of sources in image (default=%(default)s)')
         parser.add_argument('--roundness1_lim', default=(-0.75,0.75), nargs=2, type=float, help='roundness1 limits of sources in image (default=%(default)s)')
         parser.add_argument('--delta_mag_lim', default=(None,None), nargs=2, type=float, help='limits on mag - refcat_mainfilter (default=%(default)s)')
@@ -704,36 +707,50 @@ class jwst_wcs_align(apply_distortion_singleim):
             
         ixs = phot.getindices(ixs)
         ixs_use = copy.deepcopy(ixs)
+        
+        print(f'########### !!!!!!!!!!  INITIAL CUT: starting with {len(ixs)} objects')
+        
         if d2d_max is not None:
-            print(f'########### !!!!!!!!!! d2d ={d2d_max} CUT!!!')
+            print(f'd2d ={d2d_max} CUT:')
             d2d_colname = f'{phot.refcat.short}_d2d'
             ixs_use = phot.ix_inrange(d2d_colname,None,d2d_max,indices=ixs_use)
+            print(f'{len(ixs_use)} left')
         if dmag_max is not None:
+            print(f'dmag_max ={dmag_max} CUT:')
             ixs_use = phot.ix_inrange('dmag',None,dmag_max,indices=ixs_use)
+            print(f'{len(ixs_use)} left')
         if (sharpness_lim[0] is not None) or (sharpness_lim[1] is not None):
-            print(f'########### !!!!!!!!!! SHARPNESS ={sharpness_lim} CUT!!!')
+            print(f'SHARPNESS ={sharpness_lim} CUT:')
             ixs_use = phot.ix_inrange('sharpness',sharpness_lim[0],sharpness_lim[1],indices=ixs_use)
+            print(f'{len(ixs_use)} left')
         if (roundness1_lim[0] is not None) or (roundness1_lim[1] is not None):
-            print(f'########### !!!!!!!!!! roundness1={roundness1_lim} CUT!!!')
+            print(f'roundness1={roundness1_lim} CUT:')
             ixs_use = phot.ix_inrange('roundness1',roundness1_lim[0],roundness1_lim[1],indices=ixs_use)
+            print(f'{len(ixs_use)} left')
         if (objmag_lim[0] is not None) or (objmag_lim[1] is not None):
-            print(f'########### !!!!!!!!!! objmag_lim={objmag_lim} CUT!!!')
+            print(f'objmag_lim={objmag_lim} CUT:')
             ixs_use = phot.ix_inrange('mag',objmag_lim[0],objmag_lim[1],indices=ixs_use)
+            print(f'{len(ixs_use)} left')
         if (delta_mag_lim[0] is not None) or (delta_mag_lim[1] is not None):
-            print(f'########### !!!!!!!!!! delta_mag_lim={delta_mag_lim} CUT!!!')
+            print(f'delta_mag_lim={delta_mag_lim} CUT:')
             if phot.refcat_mainfilter is None:
                 raise RuntimeError('Cannot do delta_mag cut since the refcat_mainfilter is not defined!')
             ixs_use = phot.ix_inrange('delta_mag',delta_mag_lim[0],delta_mag_lim[1],indices=ixs_use)
+            print(f'{len(ixs_use)} left')
         if (refmag_lim[0] is not None) or (refmag_lim[1] is not None):
-            print(f'########### !!!!!!!!!! refmag_lim={refmag_lim} CUT!!!')
+            print(f'refmag_lim={refmag_lim} CUT:')
             if phot.refcat_mainfilter is None:
                 raise RuntimeError('Cannot do refmag_lim cut since the refcat_mainfilter is not defined!')
             ixs_use = phot.ix_inrange(phot.refcat_mainfilter,refmag_lim[0],refmag_lim[1],indices=ixs_use)
+            print(f'{len(ixs_use)} left')
         if Nbright is not None:
+            print(f'Nbright={Nbright} CUT:')
             ixs_sort = phot.ix_sort_by_cols(['mag'],indices=ixs_use)
             ixs_use = ixs_sort[:Nbright]
+            print(f'{len(ixs_use)} left')
             
         print(f'# of matched objects that pass initial cuts: {len(ixs_use)}')
+        
         ixs_notuse = AnotB(ixs,ixs_use)
         phot.ixs_use = ixs_use
         phot.ixs_notuse = ixs_notuse
@@ -806,7 +823,7 @@ class jwst_wcs_align(apply_distortion_singleim):
             tweakreg.snr_threshold = 50
             tweakreg.separation = 9
             tweakreg.searchrad = 0.5
-            tweakreg.minobj = 5
+            tweakreg.minobj = 4
             tweakreg.min_gaia = 30
             tweakreg.xoffset = 0
             tweakreg.yoffset = 0
@@ -867,7 +884,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                                  xcol='x',
                                  ycol='y',
                                  d2d_max = None,
-                                 dmag_max = 0.1,
+                                 dmag_max =None,
                                  sharpness_lim = (None, None), # sharpness limits
                                  roundness1_lim = (None, None), # roundness1 limits 
                                  delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
@@ -925,6 +942,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                refmag_lim = refmag_lim, # limits on refcat_mainfilter, the magnitude of the reference catalog
                                Nbright=Nbright,
                                ixs=ixs)
+        if len(ixs)<4:
+            raise RuntimeError(f'Only {len(ixs)} objects pass the initial cut, at least 3 required!')
         
         # do the initial dx,dy plot and other important plots
         # it shows the initial cut.
@@ -1114,15 +1133,18 @@ class jwst_wcs_align(apply_distortion_singleim):
                 refcatname = 'Gaia',
                 refcat_racol='auto',
                 refcat_deccol='auto',
+                refcat_magcol = None,
+                refcat_magerrcol = None,
+                refcat_colorcol = None,
                 pmflag = False,
                 pm_median=False,
                 photfilename=None,
                 load_photcat_if_exists=False,
                 rematch_refcat=False,
-                SNR_min = 10.0, # minimum S/N for photometry
+                SNR_min = None, # minimum S/N for photometry
                 # find best matches to refcut
                 d2d_max = None, # maximum distance refcat to source in image
-                dmag_max = 0.1, # maximum uncertainty of source 
+                dmag_max =None, # maximum uncertainty of source 
                 sharpness_lim = (None, None), # sharpness limits
                 roundness1_lim = (None, None), # roundness1 limits 
                 delta_mag_lim = (None, None), # limits on mag-refcat_mainfilter
@@ -1160,6 +1182,9 @@ class jwst_wcs_align(apply_distortion_singleim):
                               refcatname=refcatname,
                               refcat_racol=refcat_racol,
                               refcat_deccol=refcat_deccol,
+                              refcat_magcol=refcat_magcol,
+                              refcat_magerrcol=refcat_magerrcol,
+                              refcat_colorcol=refcat_colorcol,
                               pmflag=pmflag,
                               pm_median=pm_median,
                               outrootdir=self.outdir,
@@ -1247,6 +1272,9 @@ if __name__ == '__main__':
                      refcatname = args.refcat,
                      refcat_racol = args.refcat_racol,
                      refcat_deccol = args.refcat_deccol,
+                     refcat_magcol = args.refcat_magcol,
+                     refcat_magerrcol = args.refcat_magerrcol,
+                     refcat_colorcol = args.refcat_colorcol,
                      pmflag = args.refcat_pmflag,
                      pm_median = args.refcat_pmmedian,
                      photfilename = args.photfilename,
