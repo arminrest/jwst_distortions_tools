@@ -14,7 +14,9 @@ import tweakreg_hack
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
+from astropy.io import fits
 from astropy.table import Table
+
 
 from jwst import datamodels
 
@@ -26,7 +28,7 @@ plot_style['cut_data']={'style':'o','color':'red', 'ms':5 ,'alpha':0.3}
 plot_style['do_not_use_data']={'style':'o','color':'gray', 'ms':3 ,'alpha':0.3}
 
 def initplot(nrows=1, ncols=1, figsize4subplot=5, **kwargs):
-    print('hello')
+    
     sp=[]
     xfigsize=figsize4subplot*ncols
     yfigsize=figsize4subplot*nrows
@@ -629,7 +631,10 @@ class jwst_wcs_align(apply_distortion_singleim):
         self.rough_cut_px_min=0.3
         self.rough_cut_px_max=0.8
 
-        self.d_rotated_Nsigma=3.0        
+        self.d_rotated_Nsigma=3.0    
+        
+        self.outdir = '.'
+        self.override_save = False
 
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
         if parser is None:
@@ -786,6 +791,10 @@ class jwst_wcs_align(apply_distortion_singleim):
         if refcat_deccol is None: refcat_deccol = phot.refcat_deccol
 
         tweakreg = tweakreg_hack.TweakRegStep()
+        tweakreg.input_file = imfilename
+        
+
+        #tweakreg.log = None
         cal_image = datamodels.open(imfilename)
 
         tweakregfilename = re.sub('_[a-zA-Z0-9]+\.fits$','_tweakregstep.fits',os.path.basename(imfilename))
@@ -846,11 +855,15 @@ class jwst_wcs_align(apply_distortion_singleim):
         
         if self.verbose: print(f'Fitting tweakreg fitgeometry={tweakreg.fitgeometry} to xy={xcol},{ycol} to ra,dec={refcat_racol},{refcat_deccol}')
         
+        tweakreg.output_file = tweakregfilename
+        tweakreg.override_save = self.override_save
+        
         cal_data = [datamodels.open(cal_image)]
         tweakreg.run(cal_data)
 
         if not os.path.isfile(tweakregfilename):
             raise RuntimeError(f'Image {tweakregfilename} did not get created!!')
+            
         if self.replace_sip:
             dm = datamodels.open(tweakregfilename)
             gwcs_header = dm.meta.wcs.to_fits_sip(max_pix_error=self.sip_err,
@@ -1175,6 +1188,8 @@ class jwst_wcs_align(apply_distortion_singleim):
         else:
             calimname = input_image
             
+        self.outdir = os.path.dirname(calimname)
+
         # do the photometry
         self.phot.verbose = self.verbose
         self.phot.run_phot(calimname,
@@ -1199,7 +1214,7 @@ class jwst_wcs_align(apply_distortion_singleim):
                               ee_radius=ee_radius)
 
         matching_outbasename = re.sub('\.fits$','',calimname)
-        if (matching_outbasename == calimname): raise RuntimeError(f'Could not remove .fits from {calimname}')        
+        if (matching_outbasename == calimname): raise RuntimeError(f'Could not remove .fits from {calimname}')     
         # make sure the output files are in the self.outdir if set...
         if self.outdir is not None:
             matching_outbasename = f'{self.outdir}/{os.path.basename(matching_outbasename)}'
@@ -1240,7 +1255,8 @@ class jwst_wcs_align(apply_distortion_singleim):
 
 class hst_wcs_align(jwst_wcs_align):
     def __init__(self,instrument,image_filter,psf_fwhm,aperture_radius,
-        aperture_name,detector=None,pupil=None,subarray=None):
+        aperture_name=None,detector=None,pupil=None,subarray=None):
+        
         jwst_wcs_align.__init__(self)
         self.phot=hst_photclass(instrument,image_filter,psf_fwhm,aperture_radius,
         detector=detector,pupil=pupil,subarray=subarray,aperture_name=aperture_name)
@@ -1249,6 +1265,15 @@ if __name__ == '__main__':
     wcs_align = jwst_wcs_align()
     parser = wcs_align.define_options()
     args = parser.parse_args()
+    if args.is_hst:
+        im = args.cal_image
+        head = fits.getheader(im)
+        instrument = head['INSTRUME']
+        image_filter = head['FILTER']
+        psf_fwhm = 3
+        aperture_radius = 5
+
+        wcs_align = hst_wcs_align(instrument,image_filter,psf_fwhm,aperture_radius)
     
     wcs_align.verbose=args.verbose
     wcs_align.replace_sip = args.replace_sip

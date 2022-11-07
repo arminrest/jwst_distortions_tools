@@ -532,6 +532,7 @@ class jwst_photclass(pdastrostatsclass):
         self.aperture  = self.dm.meta.aperture.name
         
         print(self.instrument,self.detector,self.filtername,self.pupil,self.subarray,self.aperture)
+
         if self.verbose: print(f'Instrument: {self.instrument}, aperture:{self.aperture}')
         
         if imagetype is None:
@@ -539,6 +540,9 @@ class jwst_photclass(pdastrostatsclass):
                 self.imagetype = 'cal'
             elif re.search('i2d\.fits$',imagename):
                 self.imagetype = 'i2d'
+            elif re.search('drz\.fits$|drc\.fits$',imagename):
+                self.imagetype = 'drz'
+                skip_preparing = True
             else:
                 raise RuntimeError(f'Unknown image type for file {imagename}')
         else:
@@ -571,6 +575,10 @@ class jwst_photclass(pdastrostatsclass):
             elif self.imagetype == 'i2d':
                 (self.data,self.mask,self.DNunits) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header,
                                                                         DNunits=DNunits)
+                
+#             elif self.imagetype == 'drz':
+#                 (self.data,self.mask) = self.prepare_image(self.im['SCI'].data, self.im['SCI'].header)
+                
             else:
                 raise RuntimeError(f'image type {self.imagetype} not yet implemented!')
         
@@ -667,6 +675,10 @@ class jwst_photclass(pdastrostatsclass):
         # in the future, this can be changed to get the values directly from CRDS
         if instrument is None:
             instrument = self.instrument
+        if instrument is None:
+            head = self.primaryhdr
+            instrument = head['INSTRUME']
+            filt = head['FILTER']
         if instrument is None:
             raise RuntimeError('Can\'t get FWHM, instrument is not known')
             
@@ -1236,11 +1248,12 @@ class jwst_photclass(pdastrostatsclass):
 
         
         # find the x_idl and y_idl range, so that we can cut down the objects from the outside catalog!!
-        xmin = self.t.loc[ixs_obj,'x_idl'].min()
-        xmax = self.t.loc[ixs_obj,'x_idl'].max()
-        ymin = self.t.loc[ixs_obj,'y_idl'].min()
-        ymax = self.t.loc[ixs_obj,'y_idl'].max()
-        print(f'image objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
+        # xmin = self.t.loc[ixs_obj,'x_idl'].min()
+        # xmax = self.t.loc[ixs_obj,'x_idl'].max()
+        # ymin = self.t.loc[ixs_obj,'y_idl'].min()
+        # ymax = self.t.loc[ixs_obj,'y_idl'].max()
+     
+        #print(f'image objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
 
         #### gaia catalog
         # get ideal coords into table
@@ -1482,7 +1495,7 @@ class jwst_photclass(pdastrostatsclass):
         # calculate the ideal coordinates
         #self.radec_to_idl(indices=ixs_clean)
         
-        self.xy_to_idl(indices=ixs_clean)
+        #self.xy_to_idl(indices=ixs_clean)
         
         # calculate the ideal coordinates
         #self.xy_to_idl(indices=ixs_clean,xcol_idl='x_idl_test',ycol_idl='y_idl_test')
@@ -1523,6 +1536,7 @@ class jwst_photclass(pdastrostatsclass):
             print(f'Saving {self.photfilename}')
             self.write(self.photfilename,indices=ixs_clean)
         return(self.photfilename)
+
 
 class hst_photclass(jwst_photclass):
     def __init__(self,instrument,image_filter,psf_fwhm,aperture_radius,
@@ -1844,11 +1858,11 @@ class hst_photclass(jwst_photclass):
 
         
         # find the x_idl and y_idl range, so that we can cut down the objects from the outside catalog!!
-        xmin = self.t.loc[ixs_obj,'x_idl'].min()
-        xmax = self.t.loc[ixs_obj,'x_idl'].max()
-        ymin = self.t.loc[ixs_obj,'y_idl'].min()
-        ymax = self.t.loc[ixs_obj,'y_idl'].max()
-        print(f'image objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
+        # xmin = self.t.loc[ixs_obj,'x_idl'].min()
+        # xmax = self.t.loc[ixs_obj,'x_idl'].max()
+        # ymin = self.t.loc[ixs_obj,'y_idl'].min()
+        # ymax = self.t.loc[ixs_obj,'y_idl'].max()
+        # print(f'image objects are in x_idl=[{xmin:.2f},{xmax:.2f}] and y_idl=[{ymin:.2f},{ymax:.2f}] range')
 
         #### gaia catalog
         # get ideal coords into table
