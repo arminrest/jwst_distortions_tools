@@ -28,7 +28,7 @@ plot_style['cut_data']={'style':'o','color':'red', 'ms':5 ,'alpha':0.3}
 plot_style['do_not_use_data']={'style':'o','color':'gray', 'ms':3 ,'alpha':0.3}
 
 def initplot(nrows=1, ncols=1, figsize4subplot=5, **kwargs):
-    print('hello')
+    
     sp=[]
     xfigsize=figsize4subplot*ncols
     yfigsize=figsize4subplot*nrows
@@ -631,7 +631,10 @@ class jwst_wcs_align(apply_distortion_singleim):
         self.rough_cut_px_min=0.3
         self.rough_cut_px_max=0.8
 
-        self.d_rotated_Nsigma=3.0        
+        self.d_rotated_Nsigma=3.0    
+        
+        self.outdir = '.'
+        self.override_save = False
 
     def define_options(self,parser=None,usage=None,conflict_handler='resolve'):
         if parser is None:
@@ -772,7 +775,7 @@ class jwst_wcs_align(apply_distortion_singleim):
 
         tweakreg = tweakreg_hack.TweakRegStep()
         tweakreg.input_file = imfilename
-        tweakreg.output_file = './test.txt'
+        
 
         #tweakreg.log = None
         cal_image = datamodels.open(imfilename)
@@ -835,11 +838,15 @@ class jwst_wcs_align(apply_distortion_singleim):
         
         if self.verbose: print(f'Fitting tweakreg fitgeometry={tweakreg.fitgeometry} to xy={xcol},{ycol} to ra,dec={refcat_racol},{refcat_deccol}')
         
+        tweakreg.output_file = tweakregfilename
+        tweakreg.override_save = self.override_save
+        
         cal_data = [datamodels.open(cal_image)]
         tweakreg.run(cal_data)
 
         if not os.path.isfile(tweakregfilename):
             raise RuntimeError(f'Image {tweakregfilename} did not get created!!')
+            
         if self.replace_sip:
             dm = datamodels.open(tweakregfilename)
             gwcs_header = dm.meta.wcs.to_fits_sip(max_pix_error=self.sip_err,
@@ -1158,6 +1165,8 @@ class jwst_wcs_align(apply_distortion_singleim):
                                                             skip_if_exists = (skip_applydistortions_if_exists |  skip_if_exists))
         else:
             calimname = input_image
+            
+        self.outdir = os.path.dirname(calimname)
 
         # do the photometry
         self.phot.verbose = self.verbose
