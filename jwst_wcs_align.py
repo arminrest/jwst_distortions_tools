@@ -620,6 +620,7 @@ def histogram_cut(phot,ixs,d_col,col,
 class jwst_wcs_align(apply_distortion_singleim):
     def __init__(self):
         apply_distortion_singleim.__init__(self)
+        self.telescope = 'jwst'
         self.phot=jwst_photclass()
         self.phot.ixs4use=None
         
@@ -866,20 +867,24 @@ class jwst_wcs_align(apply_distortion_singleim):
             
         if self.replace_sip:
             dm = datamodels.open(tweakregfilename)
-            gwcs_header = dm.meta.wcs.to_fits_sip(max_pix_error=self.sip_err,
+            try:
+                gwcs_header = dm.meta.wcs.to_fits_sip(max_pix_error=self.sip_err,
                                                    max_inv_pix_error=self.sip_err,
                                                    degree=self.sip_degree,
                                                    npoints=self.sip_points)
-            from astropy.io import fits
-            dm_fits = fits.open(tweakregfilename)
+                from astropy.io import fits
+                dm_fits = fits.open(tweakregfilename)
 
-            for key,value in dict(gwcs_header).items():
-                for k in dm_fits['SCI',1].header.keys():
-                    if k==key:
-                        dm_fits['SCI',1].header[key] = value
-                        break
-                #astropy.wcs.WCS(header=gwcs_header)
-            dm_fits.writeto(tweakregfilename,overwrite=True)
+                for key,value in dict(gwcs_header).items():
+                    for k in dm_fits['SCI',1].header.keys():
+                        if k==key:
+                            dm_fits['SCI',1].header[key] = value
+                            break
+                    #astropy.wcs.WCS(header=gwcs_header)
+                dm_fits.writeto(tweakregfilename,overwrite=True)
+            except:
+                pass
+            
         #print(imcat.meta['image_model'].wcs)
         #print(gwcs_header)
         #imcat.meta['image_model'].wcs = astropy.wcs.WCS(header=gwcs_header)
@@ -1240,7 +1245,8 @@ class jwst_wcs_align(apply_distortion_singleim):
         (runflag,tweakregfilename) = self.run_align2refcat(calimname,ixs=ixs_bestmatch,
                                                            overwrite=overwrite,skip_if_exists=skip_if_exists)
         
-        self.update_phottable_final_wcs(tweakregfilename,
+        if self.telescope=='jwst':
+            self.update_phottable_final_wcs(tweakregfilename,
                                         ixs_bestmatch = ixs_bestmatch,
                                         showplots=showplots,
                                         saveplots=saveplots,
@@ -1258,6 +1264,7 @@ class hst_wcs_align(jwst_wcs_align):
         aperture_name=None,detector=None,pupil=None,subarray=None):
         
         jwst_wcs_align.__init__(self)
+        self.telescope='hst'
         self.phot=hst_photclass(instrument,image_filter,psf_fwhm,aperture_radius,
         detector=detector,pupil=pupil,subarray=subarray,aperture_name=aperture_name)
         
