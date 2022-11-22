@@ -56,6 +56,7 @@ def hst_get_ee_corr(ap,filt,inst):
                                        'ir_ee_corrections.csv')
         
         ee = Table.read('ir_ee_corrections.csv',format='ascii')
+        ee.rename_column('PIVOT','WAVELENGTH')
     else:
         if not os.path.exists('wfc3uvis2_aper_007_syn.csv'):
             urllib.request.urlretrieve('https://www.stsci.edu/files/live/sites/www/files/home/hst/'+\
@@ -63,6 +64,7 @@ def hst_get_ee_corr(ap,filt,inst):
                                    'uvis-encircled-energy/_documents/wfc3uvis2_aper_007_syn.csv',
                                       'wfc3uvis2_aper_007_syn.csv')
         ee = Table.read('wfc3uvis2_aper_007_syn.csv',format='ascii')
+
     filts = ee['FILTER']
     ee.remove_column('FILTER')
     waves = ee['WAVELENGTH']
@@ -159,7 +161,7 @@ def get_hawki_cat(ra0,dec0,radius_deg,radius_factor=1.1,
     pos0 = SkyCoord(ra=ra0, dec=dec0, unit=(u.deg,u.deg), frame='icrs')
     pos1 = SkyCoord(ra=cat['ra'], dec=cat['dec'], unit=(u.deg,u.deg), frame='icrs')
     sep = pos0.separation(pos1)
-    print(sep.degree)
+    #print(sep.degree)
     cat['sep_deg'] = sep
     cat['sep_arcmin'] = sep/60.0
     cat['J2_K2'] = cat['J2mag'] - cat['K2mag']
@@ -518,9 +520,12 @@ class jwst_photclass(pdastrostatsclass):
         self.scihdr = self.im['SCI'].header
         self.sci_wcs = wcs.WCS(self.scihdr)
         try:
-            self.err = self.im['ERR'].data
+            self.err = self.im['ERR',1].data
         except:
-            self.err = None
+            try:
+                self.err = 1./np.sqrt(self.im['WHT',1])
+            except:
+                self.err = None
         self.pixel_scale = wcs.utils.proj_plane_pixel_scales(self.sci_wcs)[0]  *\
          self.sci_wcs.wcs.cunit[0].to('arcsec')
         print(self.im.info())
@@ -1659,15 +1664,16 @@ class hst_photclass(jwst_photclass):
             epadu = 1
         else:
             epadu = primaryhdr['EXPTIME']
+
         try:
-            zp = hst_get_zp(filt,'ab')
+            zp = hst_get_zp(self.filtername,'ab')
             inst = 'ir'
         except:
             inst = 'uvis'
         if radii_Nfwhm is not None:
             self.radii_px = radii_Nfwhm*self.dict_utils[self.instrument][self.filtername]['psf fwhm']
         self.apcorr = hst_get_ee_corr(self.radii_px*self.pixel_scale,self.filtername,inst)
-        self.radius_sky_in_px,self.radius_sky_out_px = self.radii_px*3,self.radii_px*5
+        self.radius_sky_in_px,self.radius_sky_out_px = self.radii_px*1.5,self.radii_px*2.5
 
         self.radii_px = [self.radii_px]
         self.radius_for_mag_px = self.radii_px
@@ -1696,17 +1702,17 @@ class hst_photclass(jwst_photclass):
                 
                 annulus_data = annulus_mask.multiply(self.data)
                 ok =np.logical_and(annulus_mask.data > 0, np.isfinite(annulus_data))
-                if (np.sum(ok) >= 10):
-                    annulus_data_1d = annulus_data[ok]
-                    mean_sigclip, median_sigclip, stdev_sigclip = sigma_clipped_stats(annulus_data_1d, 
-                                                                                     sigma=3.5, maxiters=5)
-                    if mean_sigclip < 0 or median_sigclip == 0:
-                        median_sigclip = -99.99
-                        stdev_sigclip = -9.99
+                #if (np.sum(ok) >= 10):
+                annulus_data_1d = annulus_data[ok]
+                mean_sigclip, median_sigclip, stdev_sigclip = sigma_clipped_stats(annulus_data_1d, 
+                                                                                 sigma=3.5, maxiters=5)
+                #     if mean_sigclip < 0 or median_sigclip == 0:
+                #         median_sigclip = -99.99
+                #         stdev_sigclip = -9.99
                 
-                else:
-                    median_sigclip = -99.99
-                    stdev_sigclip = -9.99
+                # else:
+                #     median_sigclip = -99.99
+                #     stdev_sigclip = -9.99
                 
                 local_sky_median.append(median_sigclip)
                 local_sky_stdev.append(stdev_sigclip)
@@ -1734,14 +1740,14 @@ class hst_photclass(jwst_photclass):
             phot['aper_sum_bkgsub'] = phot['aperture_sum'] - phot['aper_bkg']
             if self.err is None:
                 error_poisson = np.sqrt(phot['aperture_sum'])
-                error_scatter_sky = aperture.area * local_sky_stdev**2
-                error_mean_sky = local_sky_stdev**2 * aperture.area**2 / annulus_aperture.area
-                fluxerr = np.sqrt(error_poisson**2/epadu + error_scatter_sky + error_mean_sky)
+                
             else:
-                fluxerr = phot['aperture_sum_err']
+                error_poisson = phot['aperture_sum_err']
             
+            error_scatter_sky = aperture.area * local_sky_stdev**2
+            error_mean_sky = local_sky_stdev**2 * aperture.area**2 / annulus_aperture.area
+            fluxerr = np.sqrt(error_poisson**2/epadu + error_scatter_sky + error_mean_sky)
             
-        
             
             ee_corr = 2.5*np.log10(self.apcorr)
                 
@@ -1803,7 +1809,7 @@ class hst_photclass(jwst_photclass):
         if scihdr is None: scihdr=self.scihdr
     
         indices = self.getindices()
-        print(self.t.loc[indices,xcol])
+        
         x_idl, y_idl = xy_to_idl(self.t.loc[indices,xcol], 
                                       self.t.loc[indices,ycol],
                                       primaryhdr, scihdr,
