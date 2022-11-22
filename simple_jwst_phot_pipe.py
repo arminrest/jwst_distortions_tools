@@ -1673,7 +1673,7 @@ class hst_photclass(jwst_photclass):
         if radii_Nfwhm is not None:
             self.radii_px = radii_Nfwhm*self.dict_utils[self.instrument][self.filtername]['psf fwhm']
         self.apcorr = hst_get_ee_corr(self.radii_px*self.pixel_scale,self.filtername,inst)
-        self.radius_sky_in_px,self.radius_sky_out_px = self.radii_px*3,self.radii_px*4
+        self.radius_sky_in_px,self.radius_sky_out_px = self.radii_px*1.5,self.radii_px*2.5
 
         self.radii_px = [self.radii_px]
         self.radius_for_mag_px = self.radii_px
@@ -1702,17 +1702,17 @@ class hst_photclass(jwst_photclass):
                 
                 annulus_data = annulus_mask.multiply(self.data)
                 ok =np.logical_and(annulus_mask.data > 0, np.isfinite(annulus_data))
-                if (np.sum(ok) >= 10):
-                    annulus_data_1d = annulus_data[ok]
-                    mean_sigclip, median_sigclip, stdev_sigclip = sigma_clipped_stats(annulus_data_1d, 
-                                                                                     sigma=3.5, maxiters=5)
-                    if mean_sigclip < 0 or median_sigclip == 0:
-                        median_sigclip = -99.99
-                        stdev_sigclip = -9.99
+                #if (np.sum(ok) >= 10):
+                annulus_data_1d = annulus_data[ok]
+                mean_sigclip, median_sigclip, stdev_sigclip = sigma_clipped_stats(annulus_data_1d, 
+                                                                                 sigma=3.5, maxiters=5)
+                #     if mean_sigclip < 0 or median_sigclip == 0:
+                #         median_sigclip = -99.99
+                #         stdev_sigclip = -9.99
                 
-                else:
-                    median_sigclip = -99.99
-                    stdev_sigclip = -9.99
+                # else:
+                #     median_sigclip = -99.99
+                #     stdev_sigclip = -9.99
                 
                 local_sky_median.append(median_sigclip)
                 local_sky_stdev.append(stdev_sigclip)
